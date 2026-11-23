@@ -1,0 +1,1794 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Grand Mont Adventure — Version PC</title>
+<style>
+  html,body{margin:0;padding:0;background:#0a1220;color:#eef3ff;font-family:"Segoe UI",system-ui,sans-serif;height:100%;overflow:hidden;user-select:none}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #stage{position:relative;box-shadow:0 10px 60px rgba(0,0,0,.7);border-radius:8px;overflow:hidden;background:#000}
+  canvas{display:block}
+  .hudTop,.hudBot{position:absolute;left:0;right:0;pointer-events:none;color:#fff;font-size:clamp(12px,1.6vw,19px);text-shadow:0 1px 3px rgba(0,0,0,.9)}
+  .hudTop{top:0;padding:8px 14px;background:linear-gradient(rgba(6,10,22,.85),rgba(6,10,22,0));display:flex;justify-content:space-between}
+  .hudBot{bottom:0;padding:12px 14px;background:linear-gradient(rgba(6,10,22,0),rgba(6,10,22,.85));min-height:1.4em}
+  .gold{color:#ffd843}.green{color:#5adc64}.dim{color:#96a2bd}
+  #panel{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(4,8,18,.55);z-index:5}
+  #panel.on{display:flex}
+  .card{background:rgba(10,16,32,.94);border:1px solid rgba(120,150,220,.35);border-radius:14px;padding:22px 30px;min-width:40%;max-width:88%;box-shadow:0 12px 50px rgba(0,0,0,.8);font-size:clamp(13px,1.9vw,21px)}
+  .card h1{margin:0 0 4px;font-size:1.7em;letter-spacing:.06em;color:#fff}
+  .card h1 span{color:#ffd843}
+  .row{padding:5px 10px;border-radius:8px;white-space:pre}
+  .row.sel{background:rgba(255,215,60,.16);color:#ffe06a;outline:1px solid rgba(255,215,60,.55)}
+  .row.lock{color:#7e879e}
+  .foot{margin-top:14px;color:#96a2bd;font-size:.82em}
+  .swatches{display:flex;gap:10px;margin:8px 0}
+  .sw{width:34px;height:34px;border-radius:8px;border:3px solid transparent}
+  .sw.sel{border-color:#fff;box-shadow:0 0 12px #fff8}
+  .codeboxes{display:flex;gap:18px;justify-content:center;margin:18px 0}
+  .cb{font-size:2.2em;font-weight:700;padding:6px 16px;border:2px solid #33486f;border-radius:10px;color:#fff;min-width:1.2em;text-align:center}
+  .cb.cur{border-color:#ffd843;color:#ffd843}
+  .keycap{display:inline-block;background:#1b2742;border:1px solid #3c5180;border-bottom-width:3px;border-radius:6px;padding:0 8px;margin:0 2px;font-size:.85em}
+</style>
+</head>
+<body>
+<div id="wrap"><div id="stage">
+  <canvas id="cv" width="960" height="640"></canvas>
+  <div class="hudTop" id="hudTop" style="display:none"><span id="hudTL"></span><span id="hudTR"></span></div>
+  <div class="hudBot" id="hudBot" style="display:none"></div>
+  <div id="panel"></div>
+</div></div>
+<script>
+'use strict';
+/* GRAND MONT ADVENTURE — Version PC (fichier unique)
+   Port du code calculette v3.4 + :
+   - cartes geantes (4x l'aire des gros domains de la calculette)
+   - terrain pre-rendu haute resolution, relief lisse, forets, chalets
+   - SON complet (WebAudio, tout synthetise) : vent, glisse, sauts,
+     chocs, rails, musique festive pres des chalets/resto, dameuses,
+     remontees
+   - noms localises : montagne, village, chalet/refuge/restaurant
+   - sauvegarde localStorage */
+const NM=10,NGMAX=40,NKMAX=24,NLTMAX=8,NPMAX=8,NPMAXI=9,GHMAXR=420;
+const C_GROOM=0,C_POW=1,C_TREE=2,C_ROCK=3,C_CLIF=4,C_KICK=5,C_BILD=6,C_PASG=7,
+      C_RAIL=8,C_STRT=9,C_GATE=10,C_BOSS=11,C_RAMP=12,C_PIPE=13;
+const MNAMES=["Val Thorens","Chamonix","Zermatt","Grandvalira","Cortina",
+              "St Anton","Verbier","Hemsedal","Garmisch","Sierra Nevada"];
+const CO=[
+ {nom:"France",   piste:"Piste",  lifts:["Telesiege","Teleski","Telecabine","Telepherique"],vill:"Village",rest:"Refuge"},
+ {nom:"Suisse",   piste:"Piste",  lifts:["Sessellift","Schlepplift","Gondel","Seilbahn"],  vill:"Weiler", rest:"Berghaus"},
+ {nom:"Andorre",  piste:"Pista",  lifts:["Telesilla","Telesqui","Telecadira","Teleferic"], vill:"Poble",  rest:"Xalet"},
+ {nom:"Italie",   piste:"Pista",  lifts:["Seggiovia","Skilift","Cabinovia","Funivia"],     vill:"Rifugio",rest:"Rifugio Alpino"},
+ {nom:"Autriche", piste:"Abfahrt",lifts:["Sessellift","Schlepplift","Gondel","Seilbahn"],  vill:"Ort",    rest:"Hutte"},
+ {nom:"Norvege",  piste:"Loype",  lifts:["Stolheis","Skiheis","Gondol","Taubane"],         vill:"Grend",  rest:"Fjellstue"},
+ {nom:"Allemagne",piste:"Abfahrt",lifts:["Sessellift","Schlepplift","Gondel","Seilbahn"],  vill:"Dorf",   rest:"Berghuette"},
+ {nom:"Espagne",  piste:"Pista",  lifts:["Telesilla","Telesqui","Telecabina","Teleferico"],vill:"Aldea",  rest:"Refugio"},
+];
+const CC=[0,0,1,2,3,4,1,5,6,7];
+const FEAT=["des Aigles","du Soleil","de la Foret","des Loups","du Glacier","du Chamois",
+            "du Vent","de la Crete","des Sapins","du Torrent","des Etoiles","de l'Ours"];
+/* CARTES GEANTES : dimensions x2 par rapport a la calculette (aire x4) */
+const MS=[
+ {gw:144,gh:192,trees: 2700,rocks: 300,cliff: 8},
+ {gw:160,gh:224,trees: 3600,rocks: 450,cliff:12},
+ {gw:176,gh:256,trees: 4800,rocks: 650,cliff:16},
+ {gw:176,gh:288,trees: 6000,rocks: 850,cliff:20},
+ {gw:192,gh:304,trees: 7200,rocks:1050,cliff:24},
+ {gw:192,gh:320,trees: 8400,rocks:1300,cliff:28},
+ {gw:208,gh:320,trees: 9600,rocks:1600,cliff:34},
+ {gw:208,gh:336,trees:10800,rocks:1900,cliff:40},
+ {gw:224,gh:352,trees:12000,rocks:2250,cliff:48},
+ {gw:224,gh:352,trees:13200,rocks:2750,cliff:56},
+];
+const LUNS=[0,3,6,9,12,14,16,19];
+const ASP=[230,170,130,85];
+const EVN=["Slalom","Chrono","Freeride","Course A-B","BoarderX"];
+const EVA=[0,0,3,6,9], EVR=[1,1,2,2,3];
+const MODES=["Ski carving","Ski freestyle","Snowboard carving","Snowboard freestyle"];
+const OUTC=[[235,60,60],[60,90,225],[50,190,80],[240,140,30],
+            [160,70,220],[240,100,180],[60,210,220],[240,220,60]];
+
+let TY_=[],HG=[],GW=0,GH=0,pxx=[];
+const LT=[]; let nLifts=0;
+let NV=0; const VX=[0,0,0],VY=[0,0,0];
+let ng=0; const gx=[],gy=[],gdone=[];
+let nk=0; const kx=[],ky=[];
+let nbg=0; const bx=[],by=[],bdone=[]; let bcTop=0,bcEnd=0;
+let nRails=0,reX=0,reY=0,chx=0,chy=0;
+const CPX=new Array(1000).fill(-1); let CPY0=-1,CPY1=-1;
+const GR=[{r:0,dir:0,wait:0},{r:0,dir:0,wait:0}];
+let trnOn=false,trnT100=0,trnDir=1,trnWait=0,stX=0,stY=0;
+let wea=0,weaT=900;
+let unlocked=1,curch=-1;
+const evdone=new Array(NM).fill(0);
+const npass=new Array(NM).fill(0);
+const tpass=new Array(NPMAXI).fill(0);
+const PASX=[],PASY=[];
+let PNAMEB="",MONTB="",RNAMEB="",CHANAM="";
+const LNAMEB=[],VNAMEB=["","",""];
+let skx=0,sky=0,hdg=0,spd=0;
+let air=0,crash=0,fp=0,bp=0,spin=0,grb=0;
+let score=0,jrec=0,combo=1;
+let hudmsg="",hudt=0;
+let curchal=-1,chachr=0,evlimit=750,evpar=0,racePar=0,raceX2=0,raceY2=0,cplType=0;
+let lift=0,liftp=0;
+let nearC=0,nearL=0,nearR=0,rgiven=0;
+let mode=0,outfit=0;
+const GHOST=Array.from({length:GHMAXR},()=>[0,0]);
+let ghLen=0,ghRec=0;
+const bestT=Array.from({length:NM},()=>[0,0]);
+const NC_=[]; let NQC=8,qlen=0;
+const S_TIT=0,S_CODE=1,S_AIDE=2,S_SKI=3,S_MAP=4,S_SEL=5,S_CHA=6,S_CPL=7,S_VES=8;
+let scr=S_TIT,selv=0,selv2=0,pg=0,fr=0,cham=0,vestT=0;
+let coded=[0,0,0,0],ccur=0;
+
+let rs=987654321;
+function srng(s){ rs=(s?s:1)>>>0; }
+function rng32(){ rs=(rs^((rs<<13)>>>0))>>>0; rs=(rs^(rs>>>17))>>>0; rs=(rs^((rs<<5)>>>0))>>>0; return rs; }
+function ri(n){ return rng32()%n; }
+function r01(){ return (rng32()&0xFFFFFF)/16777216; }
+
+function saveAll(){ try{ localStorage.setItem("gma_save_v1",JSON.stringify({unlocked,npass,bestT,jrec,outfit,mode,evdone})); }catch(e){} }
+function loadAll(){
+  try{
+    const d=JSON.parse(localStorage.getItem("gma_save_v1"));
+    if(!d) return;
+    if(d.unlocked) unlocked=Math.max(1,Math.min(NM,d.unlocked|0));
+    if(Array.isArray(d.npass))  for(let i=0;i<NM&&i<d.npass.length;i++)  npass[i]=d.npass[i]|0;
+    if(Array.isArray(d.evdone)) for(let i=0;i<NM&&i<d.evdone.length;i++) evdone[i]=d.evdone[i]|0;
+    if(Array.isArray(d.bestT))  for(let i=0;i<NM&&i<d.bestT.length;i++)  bestT[i]=[d.bestT[i][0]|0,d.bestT[i][1]|0];
+    if(d.jrec) jrec=d.jrec|0;
+    if(typeof d.outfit==="number") outfit=d.outfit&7;
+    if(typeof d.mode==="number")   mode=d.mode&3;
+  }catch(e){}
+}
+function loadCodes(){ try{ const u=JSON.parse(localStorage.getItem("gma_codes")); if(typeof u==="number") unlocked=Math.max(unlocked,Math.min(NM,u|0)); }catch(e){} }
+function saveCodes(){ try{ localStorage.setItem("gma_codes",JSON.stringify(unlocked)); }catch(e){} }
+
+function iabsi(a){ return a<0?-a:a; }
+function imaxi(a,b){ return a>b?a:b; }
+function imini(a,b){ return a<b?a:b; }
+function codeFor(l){ return (4117+l*411+((l*l)%97))%10000; }
+function needM(m){ return 12+Math.min(m,3); }
+function sayhud(t){ hudmsg=t; hudt=150; }
+function gatesPassed(){ let n=0; for(let i=0;i<ng;i++) if(gdone[i]) n++; return n; }
+function bxCount_(){ let n=0; for(let i=0;i<nbg;i++) if(bdone[i]) n++; return n; }
+function selCountry(){ return CO[CC[curch]].nom; }
+
+const keys=new Array(16).fill(false);
+const prevK=new Array(16).fill(false);
+function kd(k){ return !!keys[k]; }
+function pr(k){ const v=!!keys[k]; const p=prevK[k]; prevK[k]=v; return v&&!p; }
+
+// ---------- generation ----------
+function carve(x,y,t){ if(x>=0&&x<GW&&y>=0&&y<GH) TY_[y*GW+x]=t; }
+function carveSafe(x,y,t){
+  if(x>=0&&x<GW&&y>=0&&y<GH && TY_[y*GW+x]!==C_BILD && TY_[y*GW+x]!==C_CLIF) TY_[y*GW+x]=t;
+}
+function cellAt(x,y){ if(x<0||x>=GW||y<0||y>=GH) return C_TREE; return TY_[y*GW+x]; }
+
+function pisteWalk(sx,sy,tx,ty,wide,isMain,sink){
+  let cx=sx;
+  for(let yy=Math.max(1,sy); yy<=Math.min(ty,GH-2); yy++){
+    if(yy<ty-2){
+      const drift=Math.trunc(3*Math.sin(yy*0.09+curch*0.7+isMain*3))+(ri(3)-1);
+      if(drift>1) cx++; else if(drift<-1) cx--;
+      if(tx>cx&&yy%2===0) cx++;
+      if(tx<cx&&(yy+1)%2===0) cx--;
+    } else if(yy===ty-1) cx=tx;
+    if(cx<3) cx=3;
+    if(cx>GW-4) cx=GW-4;
+    if(isMain) pxx[yy]=cx;
+    if(sink) sink[yy]=cx;
+    for(let dx=0;dx<wide;dx++) carveSafe(cx-Math.floor(wide/2)+dx,yy,C_GROOM);
+  }
+  if(isMain){
+    pxx[0]=pxx[1];
+    const last=ty-1<1?1:ty-1;
+    for(let yy=ty;yy<GH;yy++) pxx[yy]=pxx[last];
+  }
+}
+
+function genNames(ct){
+  const base=ri(12);
+  MONTB=MNAMES[curch];
+  PNAMEB=ct.piste+" "+FEAT[base];
+  for(let k=0;k<nLifts;k++) LNAMEB[k]=ct.lifts[LT[k].type]+" "+FEAT[(base+k)%12];
+  for(let v=0;v<NV;v++)     VNAMEB[v]=ct.vill+" "+FEAT[(base+6+v)%12];
+  RNAMEB=ct.rest+" "+FEAT[(base+3)%12];   // restaurant d'altitude (fetes)
+  CHANAM=ct.rest+" "+FEAT[(base+9)%12];   // chalet
+}
+
+function npcInit(){
+  qlen=0; NC_.length=0;
+  for(let i2=0;i2<4;i2++){
+    const row=10+ri(Math.floor(GH/2));
+    NC_.push({x:pxx[row]+(ri(5)-2),y:row,st:0,qi:0,rt:0,kind:i2%3,spd46:10+ri(12)});
+  }
+  NC_.push({x:reX,  y:reY+2.5,st:3,qi:0,rt:0,kind:0,spd46:0});
+  NC_.push({x:reX+2,y:reY+3,  st:3,qi:0,rt:0,kind:2,spd46:0});
+  NC_.push({x:VX[0]-3,y:VY[0]+3,st:4,qi:0,rt:ri(40),kind:1,spd46:6});
+  NC_.push({x:VX[0]+2,y:VY[0]+4,st:4,qi:0,rt:ri(40),kind:2,spd46:8});
+  NQC=8;
+}
+
+function genMount(m){
+  curch=m;
+  const sp=MS[m];
+  GW=sp.gw; GH=sp.gh;
+  CPY0=CPY1=-1;
+  tpass.fill(0);
+  srng((0xF00D+m*7919+0x5EED)>>>0);
+  HG=new Array(GW*GH);
+  for(let y=0;y<GH;y++){
+    const base=235-205*y/(GH-1);
+    for(let x=0;x<GW;x++){
+      let h=base+Math.trunc(14*Math.sin(x*0.25+y*0.25))
+        +Math.trunc(10*Math.sin(x*0.25-y*0.25))
+        +Math.trunc(8*Math.sin(x*0.125+y*0.125))
+        +Math.trunc(r01()*4);
+      if(h<5)h=5; if(h>252)h=252;
+      HG[y*GW+x]=h;
+    }
+  }
+  { const HG2=new Array(GW*GH).fill(0);
+    for(let y=1;y<GH-1;y++) for(let x=1;x<GW-1;x++){
+      let s=0;
+      for(let j=-1;j<=1;j++) for(let i=-1;i<=1;i++) s+=HG[(y+j)*GW+x+i];
+      HG2[y*GW+x]=(s/9)|0;
+    }
+    for(let y=1;y<GH-1;y++) for(let x=1;x<GW-1;x++) HG[y*GW+x]=HG2[y*GW+x];
+  }
+  TY_=new Array(GW*GH).fill(C_POW);
+  for(let k=0;k<sp.cliff;k++){
+    let cx=6+ri(GW-12),cy=8+ri(GH-16);
+    const len=4+ri(6),dirx=ri(3)-1;
+    for(let i=0;i<len;i++){
+      carve(cx,cy,C_CLIF);
+      cx+=dirx;
+      if(cx<2||cx>=GW-2) break;
+      if(r01()<0.5) cy++;
+    }
+  }
+  for(let k=0;k<sp.rocks;k++){
+    const x=ri(GW),y=ri(GH);
+    if(HG[y*GW+x]>55) TY_[y*GW+x]=C_ROCK;
+  }
+  for(let k=0;k<sp.trees/4;k++){
+    const x=1+ri(GW-2),y=1+ri(GH-2);
+    if(HG[y*GW+x]<200) TY_[y*GW+x]=C_TREE;
+  }
+  const nf=(10+m*2)*2;
+  for(let g2=0; g2<nf; g2++){
+    const g3x=3+ri(GW-6),g3y=3+ri(GH-12),rad=3+ri(4);
+    for(let dy=-rad;dy<=rad;dy++) for(let dx=-rad;dx<=rad;dx++)
+      if(dx*dx+dy*dy<=rad*rad){
+        const tx=g3x+dx,ty=g3y+dy;
+        if(tx>0&&tx<GW-1&&ty>0&&ty<GH-4 && TY_[ty*GW+tx]===C_POW && HG[ty*GW+tx]<200)
+          TY_[ty*GW+tx]=C_TREE;
+      }
+  }
+  // remontees (5 -> 8)
+  nLifts=imini(5+Math.floor(m/3),7+Math.floor(m/9));
+  LT.length=0;
+  for(let k=0;k<nLifts;k++) LT.push({x1:0,y1:0,x2:0,y2:0,unlock:LUNS[k],type:0});
+  LT[0].type=0; LT[1].type=1; LT[2].type=2; LT[3].type=3;
+  LT[4].type=(m%2)?2:1;
+  chy=GH-7;
+  chx=Math.floor(GW/2)+ri(Math.floor(GW/4))-Math.floor(GW/8);
+  if(chx<6) chx=6;
+  if(chx>GW-8) chx=GW-8;
+  for(let dy=0;dy<2;dy++) for(let dx=0;dx<2;dx++) carve(chx+dx,chy+dy,C_BILD);
+  LT[0].x1=chx; LT[0].y1=chy+1;
+  { let tx=chx+12+ri(GW-24);
+    if(tx<5) tx=5; if(tx>GW-6) tx=GW-6;
+    LT[0].x2=tx; LT[0].y2=3+ri(3); }
+  NV=m>=4?3:2;
+  VX[0]=chx; VY[0]=chy;
+  for(let v=1;v<NV;v++){
+    let vx2=chx+(v===1?-(12+ri(14)):(12+ri(14)));
+    if(vx2<6) vx2=6+ri(4);
+    if(vx2>GW-8) vx2=GW-10-ri(2);
+    VX[v]=vx2; VY[v]=GH-7-ri(3);
+    for(let dy=0;dy<2;dy++) for(let dx=0;dx<2;dx++) carve(vx2+dx,VY[v]+dy,C_BILD);
+    for(let h=0;h<5;h++) carve(vx2+ri(11)-5,VY[v]+ri(5)-1,C_BILD);
+  }
+  for(let k=1;k<nLifts;k++){
+    let bi=k<=2?1:2;
+    if(bi>=NV) bi=0;
+    let tx=VX[bi]+(ri(41)-20);
+    let ty=5+ri(Math.floor(GH/4));
+    if(tx<5) tx=5;
+    if(tx>GW-6) tx=GW-6;
+    LT[k].x1=VX[bi]; LT[k].y1=VY[bi]+2;
+    if(Math.abs(tx-VX[bi])<10) tx=(VX[bi]+Math.floor(GW/2))%(GW-10)+5;
+    LT[k].x2=tx; LT[k].y2=ty;
+    pisteWalk(tx,ty,LT[k].x1,LT[k].y1,2,0,k===1?CPX:0);
+    if(k===1){ CPY0=ty; CPY1=LT[k].y1; }
+  }
+  pxx=new Array(GH).fill(LT[0].x2);
+  pisteWalk(LT[0].x2,LT[0].y2,LT[0].x1,LT[0].y1,3,1,0);
+  reX=Math.min(LT[2].x2+2,GW-4); reY=LT[2].y2;
+  for(let dy=0;dy<2;dy++) for(let dx=0;dx<2;dx++) carve(reX+dx,reY+dy,C_BILD);
+  nk=0;
+  for(let yy=12; yy<GH-10&&nk<NKMAX; yy+=22){
+    const x=pxx[yy]+(ri(7)-3);
+    if(x>1&&x<GW-2&&TY_[yy*GW+x]!==C_BILD&&TY_[yy*GW+x]!==C_CLIF){ kx[nk]=x; ky[nk]=yy; nk++; }
+  }
+  for(let i2=0;i2<nk;i2++) carve(kx[i2],ky[i2],C_KICK);
+  ng=0;
+  for(let yy=12; yy<GH-8&&ng<NGMAX; yy+=10){
+    gx[ng]=pxx[yy]; gy[ng]=yy; gdone[ng]=0; ng++;
+  }
+  // snowpark
+  nRails=0;
+  { const niv=Math.min(m,9);
+    const rows=1+Math.min(2,Math.floor(niv/4));
+    const rlen=4+Math.min(4,Math.floor(niv/2));
+    let px2=LT[2].x2+(ri(9)-4),py2=LT[2].y2+14+ri(8);
+    if(px2<4) px2=4;
+    if(px2>GW-rlen-3) px2=GW-rlen-3;
+    if(px2<4) px2=4;
+    if(py2>GH-rows*4-10) py2=GH-rows*4-10;
+    if(py2<8) py2=8;
+    for(let rr=0;rr<rows;rr++){
+      for(let dx=0;dx<rlen;dx++){ carve(px2+dx,py2+rr*4,C_RAIL); nRails++; }
+      carve(px2+(rr%2?rlen:-1),py2+rr*4+2,C_KICK);
+      carveSafe(px2+(rr%2?rlen+1:-2),py2+rr*4+2,C_KICK);
+      if(niv>=7&&rr===1&&rows>=3)
+        for(let dx=0;dx<rlen;dx++){ carve(px2+dx,py2+rr*4+1,C_RAIL); nRails++; }
+    }
+  }
+  // boarder cross
+  nbg=0; bcTop=LT[1].y2+1; bcEnd=GH-6;
+  { let cx=LT[1].x2,side=1;
+    for(let yy=bcTop; yy<bcEnd&&yy<GH-4; yy++){
+      if(cx<3) cx=3;
+      if(cx>GW-4) cx=GW-4;
+      for(let dx=-1;dx<=0;dx++) carveSafe(cx+dx,yy,C_GROOM);
+      if((yy-bcTop)%9===0&&yy<bcEnd-4&&nbg<NGMAX){
+        let gxp=cx+side; side=-side;
+        if(gxp<2) gxp=cx+1;
+        if(gxp>GW-3) gxp=cx-1;
+        bx[nbg]=gxp; by[nbg]=yy+2; bdone[nbg]=0; nbg++;
+        carveSafe(gxp,yy+2,C_GATE);
+      }
+      if((yy-bcTop)%15===7) carveSafe(cx+1,yy+1,C_KICK);
+      if(r01()<0.4) cx+=(ri(3)-1);
+    }
+  }
+  // bosses
+  for(let k=0,nbm=20+ri(20); k<nbm; k++){
+    const xb=2+ri(GW-4),yb=6+ri(GH-14);
+    if(TY_[yb*GW+xb]===C_POW&&Math.abs(xb-pxx[yb])>3) TY_[yb*GW+xb]=C_BOSS;
+  }
+  // halfpipe + rampes
+  if(m>=4){
+    let hpx=4+ri(GW-16),hpy=10+ri(GH-26);
+    if(hpx>GW-5) hpx=GW-5;
+    if(hpy>GH-20) hpy=GH-20;
+    for(let rr=0; rr<14; rr++){
+      let xx=hpx+Math.trunc(3.5*Math.sin(rr*0.45));
+      if(xx<4) xx=4;
+      if(xx>GW-5) xx=GW-5;
+      carve(xx,hpy+rr,C_PIPE);
+      carveSafe(xx-1,hpy+rr,C_RAMP);
+      carveSafe(xx+1,hpy+rr,C_RAMP);
+    }
+  }
+  for(let k=0,nr=20+m*2; k<nr; k++){
+    const xb=2+ri(GW-4),yb=6+ri(GH-14);
+    if(TY_[yb*GW+xb]===C_POW&&Math.abs(xb-pxx[yb])>3) TY_[yb*GW+xb]=C_RAMP;
+  }
+  // pass caches hors-piste
+  let np2=0,guard=0;
+  while(np2<NPMAXI&&guard<4000){
+    guard++;
+    const x=2+ri(GW-4),y=4+ri(GH-10);
+    if(TY_[y*GW+x]!==C_POW) continue;
+    if(Math.abs(x-pxx[y])<=2) continue;
+    let ok2=1;
+    for(let k=0;k<nLifts;k++)
+      if(Math.abs(x-LT[k].x1)+Math.abs(y-LT[k].y1)<5) ok2=0;
+    if(!ok2) continue;
+    for(let i2=0;i2<np2;i2++)
+      if(Math.abs(x-PASX[i2])+Math.abs(y-PASY[i2])<6){ ok2=0; break; }
+    if(!ok2) continue;
+    PASX[np2]=x; PASY[np2]=y; np2++;
+  }
+  while(np2<NPMAXI){ PASX[np2]=PASX[0]||2; PASY[np2]=PASY[0]||4; np2++; }
+  GR[0].r=GH-8; GR[0].dir=-1; GR[0].wait=0;
+  GR[1].r=GH/2; GR[1].dir=1;  GR[1].wait=150;
+  trnOn=(m%2)===0;
+  trnT100=0; trnDir=1; trnWait=60;
+  if(trnOn){
+    stX=Math.min(VX[0]+4,GW-5); stY=VY[0];
+    for(let dy=0;dy<2;dy++) for(let dx=0;dx<2;dx++) carveSafe(stX+dx,stY+dy,C_BILD);
+  }
+  for(let dx=-2;dx<=2;dx++) carveSafe(pxx[6]+dx,6,C_STRT);
+  // profil monotone de la piste principale
+  {
+    const yTop=Math.max(1,LT[0].y2);
+    const hTop=HG[yTop*GW+pxx[yTop]];
+    const yBot=GH-6;
+    let hBot=HG[yBot*GW+pxx[yBot]];
+    if(hBot>hTop-30) hBot=hTop-30;
+    for(let y2=yTop;y2<yBot;y2++){
+      const tgt=hTop-(hTop-hBot)*(y2-yTop)/(yBot-yTop);
+      for(let ddx=-1;ddx<=1;ddx++){
+        let xx2=pxx[y2]+ddx; if(xx2<1)xx2=1; if(xx2>=GW-1)xx2=GW-1;
+        if(HG[y2*GW+xx2]>tgt) HG[y2*GW+xx2]=tgt;
+      }
+    }
+    for(let y2=yTop;y2<yBot;y2++){
+      const h1=HG[y2*GW+pxx[y2]],h2=HG[(y2+1)*GW+pxx[y2+1]];
+      if(h2>h1) HG[(y2+1)*GW+pxx[y2+1]]=h1;
+    }
+  }
+  // types logiques selon le denivele
+  { const rk=[]; for(let k2=0;k2<nLifts;k2++) rk.push(k2);
+    for(let a2=1;a2<nLifts;a2++) for(let b2=0;b2<a2;b2++)
+      if(LT[rk[b2]].y1-LT[rk[b2]].y2>LT[rk[a2]].y1-LT[rk[a2]].y2){
+        const t2=rk[a2]; rk[a2]=rk[b2]; rk[b2]=t2;
+      }
+    for(let k2=0;k2<nLifts;k2++)
+      LT[rk[k2]].type=(k2===0)?0:(k2>=nLifts-1?3:(k2>=(nLifts-1)/2+1?2:1));
+  }
+  genNames(CO[CC[m]]);
+  npcInit();
+  prerenderTerrain();
+  prerenderMiniMap();
+}
+
+function scync(){
+  if(GH<20) return;
+  for(let g=0;g<2;g++){
+    if(GR[g].wait>0){ GR[g].wait--; continue; }
+    GR[g].r+=0.05*GR[g].dir;
+    if(GR[g].r<=4){ GR[g].r=4; GR[g].dir=1; GR[g].wait=220; }
+    if(GR[g].r>=GH-7){ GR[g].r=GH-7; GR[g].dir=-1; GR[g].wait=260; }
+  }
+  if(trnOn){
+    if(trnWait>0) trnWait--;
+    else{
+      trnT100+=2*trnDir;
+      if(trnT100>=100){ trnT100=100; trnDir=-1; trnWait=90; }
+      if(trnT100<=0){ trnT100=0; trnDir=1; trnWait=90; }
+    }
+  }
+}
+
+function npcTick(){
+  if(nLifts===0) return;
+  let qchanged=false;
+  for(let i2=0;i2<4;i2++){
+    const n=NC_[i2];
+    if(n.st===0){
+      let row2=Math.trunc(n.y)+2; if(row2>=GH) row2=GH-1;
+      const tx=pxx[row2]+(n.kind%3)-1;
+      const mv=n.spd46/140;
+      if(tx>n.x) n.x+=mv*0.25; else if(tx<n.x) n.x-=mv*0.25;
+      n.y+=mv;
+      if(n.x>=GW-1) n.x=GW-1;
+      if(n.y>=GH-7){ n.st=1; n.qi=qlen++; n.rt=1; qchanged=true; }
+    } else if(n.st===1){
+      if(--n.rt<=0){
+        if(n.qi===0){ n.st=2; n.rt=ASP[LT[0].type]; qchanged=true; }
+        else n.rt=1;
+      }
+    } else if(n.st===2){
+      const pp=1-n.rt/ASP[LT[0].type];
+      n.x=LT[0].x1+(LT[0].x2-LT[0].x1)*pp;
+      n.y=LT[0].y1+(LT[0].y2-LT[0].y1)*pp;
+      if(--n.rt<=0){ n.st=0; n.x=LT[0].x2; n.y=LT[0].y2+1; qchanged=true; }
+    }
+  }
+  if(qchanged){
+    let q2=0;
+    for(let i2=0;i2<4;i2++) if(NC_[i2].st===1) NC_[i2].qi=q2++;
+    qlen=q2;
+    for(let i2=0;i2<4;i2++)
+      if(NC_[i2].st===1&&NC_[i2].rt<=0) NC_[i2].rt=50*(NC_[i2].qi+1);
+  }
+  for(let i2=0;i2<4;i2++)
+    if(NC_[i2].st===1){
+      NC_[i2].x=LT[0].x1-3.5-(NC_[i2].qi%4);
+      NC_[i2].y=LT[0].y1+0.5+Math.floor(NC_[i2].qi/4);
+    }
+  for(let i2=6;i2<8;i2++){
+    const n=NC_[i2];
+    n.x+=(n.spd46>7?0.05:-0.05);
+    if(i2===6){
+      if(n.x<VX[0]-3) n.spd46=8;
+      if(n.x>VX[0]+3) n.spd46=6;
+    } else {
+      if(n.x<VX[0]-2) n.spd46=10;
+      if(n.x>VX[0]+4) n.spd46=8;
+    }
+  }
+}
+
+function checkUnlock(){
+  if(curch<0||curch+1>=NM) return;
+  if(npass[curch]>=needM(curch)&&unlocked===curch+1){
+    unlocked=curch+2;
+    hudmsg=MNAMES[curch+1].toUpperCase()+" debloquee ! Code : "+String(codeFor(curch+1)).padStart(4,"0");
+    hudt=300;
+    saveAll(); saveCodes();
+    S_.jingleUnlock();
+  }
+}
+function completeChallenge(ev){
+  const first=(evdone[curch]&(1<<ev))===0;
+  if(first){ evdone[curch]|=(1<<ev); npass[curch]+=EVR[ev]; }
+  else score+=150;
+  if((ev===1||ev===3)&&ghRec>0){
+    const slot=ev===1?0:1;
+    if(bestT[curch][slot]===0||chachr<bestT[curch][slot]){
+      bestT[curch][slot]=chachr;
+      ghLen=ghRec;
+      saveAll();
+    }
+  }
+  hudmsg=EVN[ev]+" reussi !"+(first?"":" (deja fait)")+" +"+(first?EVR[ev]:0)+" PASS";
+  hudt=300;
+  S_.jinglePass();
+  checkUnlock();
+}
+function newMountain(m){
+  genMount(m);
+  freeRun();
+  curchal=-1;
+  hudmsg=MONTB+" - "+CO[CC[m]].nom;
+  hudt=220;
+}
+
+// ---------- moteur sonore (WebAudio 100% synthetise) ----------
+const S_={
+  ok:false,ac:null,
+  init(){
+    if(this.ok) return;
+    try{
+      this.ac=new (window.AudioContext||window.webkitAudioContext)();
+      const ac=this.ac;
+      const nb=ac.createBuffer(1,ac.sampleRate*2,ac.sampleRate);
+      const dd=nb.getChannelData(0);
+      for(let i=0;i<dd.length;i++) dd[i]=Math.random()*2-1;
+      this.noiseBuf=nb;
+      const mkNoise=(fq,type)=>{
+        const src=ac.createBufferSource(); src.buffer=nb; src.loop=true;
+        const flt=ac.createBiquadFilter(); flt.type=type; flt.frequency.value=fq;
+        const gn=ac.createGain(); gn.gain.value=0;
+        src.connect(flt); flt.connect(gn); gn.connect(ac.destination); src.start();
+        return {src,flt,gn};
+      };
+      this.wind=mkNoise(400,"lowpass");
+      this.glide=mkNoise(1100,"bandpass");
+      this.grind=mkNoise(2400,"bandpass");
+      { const osc=ac.createOscillator(); osc.type="sawtooth"; osc.frequency.value=48;
+        const lp=ac.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=160;
+        const gn=ac.createGain(); gn.gain.value=0;
+        osc.connect(lp); lp.connect(gn); gn.connect(ac.destination); osc.start();
+        this.dam={osc,gn}; }
+      { const osc=ac.createOscillator(); osc.type="triangle"; osc.frequency.value=110;
+        const gn=ac.createGain(); gn.gain.value=0;
+        osc.connect(gn); gn.connect(ac.destination); osc.start();
+        this.liftgn=gn; }
+      this.musicGain=ac.createGain(); this.musicGain.gain.value=0;
+      this.musicGain.connect(ac.destination);
+      this.nextNote=0; this.mstep=0;
+      this.ok=true;
+    }catch(e){ this.ok=false; }
+  },
+  burst(dur,fq,type,vol,fq2){
+    if(!this.ok) return;
+    try{
+      const ac=this.ac,t=ac.currentTime;
+      const src=ac.createBufferSource(); src.buffer=this.noiseBuf;
+      const flt=ac.createBiquadFilter(); flt.type=type||"lowpass";
+      flt.frequency.setValueAtTime(fq,t);
+      if(fq2) flt.frequency.exponentialRampToValueAtTime(fq2,t+dur);
+      const gn=ac.createGain();
+      gn.gain.setValueAtTime(vol,t); gn.gain.exponentialRampToValueAtTime(0.001,t+dur);
+      src.connect(flt); flt.connect(gn); gn.connect(ac.destination);
+      src.start(t); src.stop(t+dur+0.05);
+    }catch(e){}
+  },
+  tone(fq,dur,vol,type){
+    if(!this.ok) return;
+    try{
+      const ac=this.ac,t=ac.currentTime;
+      const o=ac.createOscillator(); o.type=type||"sine"; o.frequency.value=fq;
+      const gn=ac.createGain();
+      gn.gain.setValueAtTime(vol,t); gn.gain.exponentialRampToValueAtTime(0.001,t+dur);
+      o.connect(gn); gn.connect(ac.destination); o.start(t); o.stop(t+dur+0.05);
+    }catch(e){}
+  },
+  kick(){ this.burst(0.35,600,"highpass",0.30,3000); this.tone(180,0.15,0.2,"square"); },
+  land(){ this.burst(0.16,500,"lowpass",0.35); },
+  clank(){ this.burst(0.12,3000,"bandpass",0.4); this.tone(820,0.2,0.15,"square"); },
+  crash(){ this.burst(0.5,900,"lowpass",0.5,150); this.tone(90,0.3,0.25,"square"); },
+  passPickup(){ [660,880,1320].forEach((f,i)=>setTimeout(()=>this.tone(f,0.18,0.2),i*90)); },
+  jinglePass(){ [523,659,784].forEach((f,i)=>setTimeout(()=>this.tone(f,0.22,0.22),i*110)); },
+  jingleUnlock(){ [523,659,784,1046,1318].forEach((f,i)=>setTimeout(()=>this.tone(f,0.3,0.25,"triangle"),i*140)); },
+  mnote(fq,when,dur,type,vol){
+    const ac=this.ac;
+    const o=ac.createOscillator(); o.type=type; o.frequency.value=fq;
+    const gn=ac.createGain();
+    gn.gain.setValueAtTime(0.0001,when);
+    gn.gain.linearRampToValueAtTime(vol,when+0.02);
+    gn.gain.exponentialRampToValueAtTime(0.001,when+dur);
+    o.connect(gn); gn.connect(this.musicGain);
+    o.start(when); o.stop(when+dur+0.05);
+  },
+  frame(spd,onGroom,dResto,dChalet,dDam,onLift,onRail){
+    if(!this.ok) return;
+    try{
+      const ac=this.ac;
+      this.wind.gn.gain.setTargetAtTime(0.015+spd*0.16+(onLift?0.04:0),ac.currentTime,0.2);
+      this.wind.flt.frequency.setTargetAtTime(300+spd*700,ac.currentTime,0.3);
+      const glG=(!onLift&&spd>0.05)?((onGroom?0.10:0.055)*Math.min(1,spd*2)):0;
+      this.glide.gn.gain.setTargetAtTime(glG,ac.currentTime,0.15);
+      this.grind.gn.gain.setTargetAtTime(onRail?0.2:0,ac.currentTime,0.05);
+      const dg=dDam>=0?Math.max(0,0.12*(1-dDam/18)):0;
+      this.dam.gn.gain.setTargetAtTime(dg,ac.currentTime,0.3);
+      this.dam.osc.frequency.setTargetAtTime(44+6*Math.sin(fr*0.01),ac.currentTime,0.2);
+      this.liftgn.gain.setTargetAtTime(onLift?0.05:0,ac.currentTime,0.3);
+      const near=(dResto>=0&&dChalet>=0)?Math.min(dResto,dChalet):(dResto>=0?dResto:dChalet);
+      const mg=near>=0?Math.max(0,0.14*(1-near/12)):0;
+      this.musicGain.gain.setTargetAtTime(mg,ac.currentTime,0.4);
+      if(mg>0.01){
+        const t=ac.currentTime;
+        if(this.nextNote<t) this.nextNote=t+0.05;
+        while(this.nextNote<t+0.3){
+          const SC=[0,2,4,7,9,12,14,16];
+          const mel=[0,4,7,9,7,4,2,4];
+          if(this.mstep%2===0)
+            this.mnote(87+(this.mstep%8===0?12:0),this.nextNote,0.24,"square",0.10);
+          this.mnote(349.2*Math.pow(2,SC[mel[this.mstep%8]]/12),this.nextNote,0.14,"triangle",0.09);
+          this.mstep++;
+          this.nextNote+=0.16;
+        }
+      }
+    }catch(e){}
+  },
+};
+
+// ---------- physique ----------
+const trail=[];
+let px1=0,py1=0,pliftp=0;
+let sOnGroom=false,sOnRail=false,sDResto=-1,sDChalet=-1,sDDam=-1;
+
+function freeRun(){
+  skx=pxx[3]; sky=3.0;
+  hdg=0; spd=0.30; air=0; crash=0;
+  fp=bp=spin=grb=0;
+  for(let i2=0;i2<ng;i2++) gdone[i2]=0;
+  for(let i2=0;i2<nbg;i2++) bdone[i2]=0;
+  score=0; combo=1; chachr=0; lift=0; liftp=0; ghRec=0;
+  trail.length=0;
+  px1=skx; py1=sky; pliftp=liftp;
+}
+function boardLift(k){
+  skx=LT[k].x1; sky=LT[k].y1+0.5;
+  lift=k+1; liftp=0; spd=0; hdg=0; air=0; crash=0;
+  pliftp=0; px1=skx; py1=sky;
+  sayhud(LNAMEB[k]);
+}
+function doCrash(){
+  crash=40; spd=0; score=Math.max(0,score-30);
+  if(combo>1) combo=1;
+  sayhud("CRASH !");
+  S_.crash();
+}
+function phys(){
+  if(lift>0){
+    pliftp=liftp;
+    liftp+=1/ASP[LT[lift-1].type];
+    if(liftp>=1){
+      skx=LT[lift-1].x2; sky=LT[lift-1].y2+1;
+      spd=0.05; hdg=0; lift=0; liftp=0; air=0; crash=0;
+      px1=skx; py1=sky;
+      sayhud("Sommet !");
+      S_.land();
+    }
+    return;
+  }
+  px1=skx; py1=sky;
+  if(crash>0){
+    crash--;
+    if(crash===0){
+      let row=Math.trunc(sky);
+      if(row<1) row=1;
+      if(row>GH-8) row=GH-8;
+      skx=pxx[row]; sky=row;
+      spd=0.30; air=0;
+    }
+    return;
+  }
+  nearC=0; nearL=0; nearR=0; sOnRail=false;
+  const turn=0.055*((mode&1)?1.6:1);
+  if(air===0){
+    if(kd(0)) hdg-=turn+(spd>0.35?0.02:0);
+    if(kd(3)) hdg+=turn+(spd>0.35?0.02:0);
+    if(hdg<-1.2) hdg=-1.2;
+    if(hdg>1.2) hdg=1.2;
+  }
+  const dx=Math.sin(hdg),dy=Math.cos(hdg);
+  let cxi=Math.trunc(skx+dx*1.2),cyi=Math.trunc(sky+dy*1.2);
+  if(cxi<0)cxi=0; if(cxi>=GW)cxi=GW-1;
+  if(cyi<0)cyi=0; if(cyi>=GH)cyi=GH-1;
+  let ddx=Math.abs(Math.trunc(skx)-cxi),ddy=Math.abs(Math.trunc(sky)-cyi);
+  if(ddx<1)ddx=1; if(ddy<1)ddy=1;
+  const dz=HG[cyi*GW+cxi]-HG[Math.trunc(sky)*GW+Math.trunc(skx)];
+  const slope=dz/(ddx>ddy?ddx:ddy);
+  const acc=-slope*0.15+(kd(1)?0.004:0);
+  spd+=acc-0.004;
+  const ct=cellAt(Math.trunc(skx+dx*1.2),Math.trunc(sky+dy*1.2));
+  sOnGroom=(ct===C_GROOM||ct===C_GATE||ct===C_STRT||ct===C_PASG);
+  if(kd(2)) spd-=0.02;
+  const vg=(mode&1)?0.64:0.72, vp=(mode&1)?0.50:0.55, vo=(mode&1)?0.36:0.40;
+  const vmax=sOnGroom?vg:((ct===C_POW||ct===C_KICK||ct===C_PIPE||ct===C_RAMP)?vp:vo);
+  if(spd>vmax) spd=vmax;
+  if(spd<0.02) spd=0.02;
+  let nx=skx+dx*spd,ny=sky+dy*spd;
+  if(nx<0.5){ nx=0.5; spd*=0.5; }
+  if(nx>=GW-0.5){ nx=GW-0.5; spd*=0.5; }
+  if(ny<0.5){ ny=0.5; spd*=0.5; }
+  if(ny>=GH-0.5){ ny=GH-0.5; spd*=0.5; }
+  const ncell=cellAt(Math.trunc(nx),Math.trunc(ny));
+  if((ncell===C_TREE||ncell===C_ROCK)&&air===0){ doCrash(); return; }
+  if(ncell===C_CLIF&&air===0){
+    air=(mode&1)?20:16; fp=bp=0; spin=0; grb=0; spd+=0.12; score+=20*combo;
+    sayhud("Falaise ! (+20)"); S_.kick();
+  }
+  if(ncell===C_KICK&&air===0){
+    air=(mode&1)?26:22; fp=bp=0; spin=0; grb=0; spd+=0.15; score+=50*combo;
+    const dist2=Math.trunc(spd*air*130/2/10);
+    if(dist2>jrec){ jrec=dist2; hudmsg="KICKER ! record "+dist2+" m"; hudt=150; }
+    else { hudmsg="KICKER ! compose ta figure"; hudt=150; }
+    S_.kick();
+  }
+  if(ncell===C_RAIL&&air===0){ score+=30; sayhud("Rail ! +30"); spd=0.20; sOnRail=true; S_.clank(); }
+  if(ncell===C_BOSS&&air===0){ air=2+ri(4); spd-=0.03; score+=10; }
+  if(ncell===C_PIPE&&air===0){ score+=2; if(spd<0.55) spd+=0.012; }
+  if(ncell===C_RAMP&&air===0){ air=4+ri(4); spd+=0.02; score+=25; S_.kick(); }
+  if(crash>0) return;
+  skx=nx; sky=ny;
+  if(air>0){
+    air--;
+    if(pr(0)){ spin++; hdg-=0.55; }
+    if(pr(3)){ spin++; hdg+=0.55; }
+    if(pr(1)) fp++;
+    if(pr(2)) bp++;
+    if(kd(4)) grb++;
+    if(air===0){
+      const flips=fp+bp, cn=(mode&1)?1:2, mult=combo>4?4:combo;
+      S_.land();
+      if(flips||spin||grb){
+        let b=20+flips*70+spin*45+Math.max(0,Math.min(grb,15))*3;
+        if(mode&1) b=b*12/10;
+        b*=mult;
+        score+=b;
+        let mid="";
+        if(fp&&bp) mid="Salto Dbl";
+        else if(fp) mid="Salto Av"+(fp>1?"x2":"");
+        else if(bp) mid="Salto Ar"+(bp>1?"x2":"");
+        hudmsg=mid+(spin?(mid?" +Vrille":"Vrille"):"")+(grb?((mid||spin)?" +Grab":"Grab"):"")
+              +((flips+spin>=cn)?" COMBO!":"")+" +"+b;
+        hudt=150;
+        if(flips+spin>=cn&&combo<9) combo++;
+      }
+      fp=bp=0;
+      if((mode===0||mode===2)&&spin>=4){
+        const sw=spin; spin=0;
+        doCrash();
+        hudmsg="Switch en carving ! CHUTE ("+sw+")";
+        hudt=150;
+        return;
+      }
+      spin=0;
+      const lc=cellAt(Math.trunc(skx),Math.trunc(sky));
+      if(lc===C_TREE||lc===C_ROCK||lc===C_CLIF||lc===C_BILD){ doCrash(); return; }
+    }
+  } else fp=bp=0;
+  // pass dorees
+  for(let i2=0;i2<NPMAXI;i2++){
+    if(!tpass[i2]&&Math.abs(Math.trunc(skx)-PASX[i2])<=1&&Math.abs(Math.trunc(sky)-PASY[i2])<=1){
+      tpass[i2]=1;
+      npass[curch]++;
+      const remM=needM(curch)-npass[curch];
+      let remL=99;
+      for(let k2=0;k2<nLifts;k2++)
+        if(LT[k2].unlock>npass[curch]) remL=Math.min(remL,LT[k2].unlock-npass[curch]);
+      if(remM<=0) hudmsg="Bravo ! Ski pass pret : montagne suivante !";
+      else if(remL<=2&&remL<remM) hudmsg="Bravo ! Ski pass ! Plus que "+remL+" et une remontee !";
+      else hudmsg="Bravo ! Ski pass ! Plus que "+remM+" pour la montagne suivante";
+      hudt=240;
+      S_.passPickup();
+      checkUnlock();
+    }
+  }
+  if(curchal===0){
+    const row=Math.trunc(ny);
+    for(let i2=0;i2<ng;i2++)
+      if(!gdone[i2]&&gy[i2]===row&&Math.abs(Math.trunc(nx)-gx[i2])<=1){
+        gdone[i2]=1; score+=100*combo; combo++;
+        sayhud("Porte ! (+100)"); S_.clank();
+      }
+  }
+  if(curchal===4){
+    const row=Math.trunc(ny);
+    for(let i2=0;i2<nbg;i2++)
+      if(!bdone[i2]&&by[i2]===row&&Math.abs(Math.trunc(nx)-bx[i2])<=1){
+        bdone[i2]=1; score+=80*combo; combo++;
+        sayhud("Porte BX ! (+80)"); S_.clank();
+      }
+  }
+  if(curchal===1||curchal===3||curchal===4) chachr++;
+  if(curchal===2){
+    chachr++;
+    if(chachr>=evlimit){
+      if(score>=400){ cplType=2; scr=S_CPL; return; }
+      curchal=-1;
+      sayhud("Temps ecoule !");
+    }
+  }
+  if((curchal===1||curchal===3)&&ghRec<GHMAXR){
+    GHOST[ghRec][0]=skx*16; GHOST[ghRec][1]=sky*16; ghRec++;
+  }
+  if(curchal===3){
+    if(Math.abs(Math.trunc(skx)-raceX2)<=2&&Math.abs(Math.trunc(sky)-raceY2)<=2){
+      if(chachr<=racePar){ cplType=3; scr=S_CPL; return; }
+      hudmsg="Trop lent ! ("+Math.floor(chachr/13)+"s > "+Math.floor(racePar/13)+"s)";
+      hudt=220;
+      curchal=-1;
+    }
+  }
+  if(curchal===4){
+    if(Math.trunc(sky)>=bcEnd){
+      if(bxCount_()>=nbg){ cplType=4; scr=S_CPL; return; }
+      if(hudt<=0){ hudmsg="Il reste "+(nbg-bxCount_())+" portes BX"; hudt=100; }
+    }
+  }
+  if(Math.abs(Math.trunc(skx)-chx)<=2&&Math.abs(Math.trunc(sky)-chy)<=1){
+    if(curchal===0){
+      if(gatesPassed()>=ng){ cplType=0; spd=0; scr=S_CPL; return; }
+      skx-=dx*spd; sky-=dy*spd; spd=0.02;
+      nearC=1;
+      hudmsg="Il reste "+(ng-gatesPassed())+" portes";
+      hudt=100;
+    } else if(curchal===1){
+      if(chachr<=evpar){ cplType=1; scr=S_CPL; return; }
+      hudmsg="Par rate ! ("+Math.floor(chachr/13)+"s > "+Math.floor(evpar/13)+"s) rejoue !";
+      hudt=220;
+      curchal=-1;
+    } else if(curchal===2){
+      if(score>=400){ cplType=2; scr=S_CPL; return; }
+      skx-=dx*spd; sky-=dy*spd; spd=0.02;
+      nearC=1;
+      hudmsg="Freeride : "+score+" pts !";
+      hudt=100;
+    } else {
+      skx-=dx*spd; sky-=dy*spd; spd=0.02;
+      nearC=1;
+    }
+  }
+  if(Math.abs(Math.trunc(skx)-reX-1)<=2&&Math.abs(Math.trunc(sky)-reY-1)<=2){
+    nearR=1;
+    if(!rgiven){ score+=50; hudmsg="Fondue au "+RNAMEB+" ! +50"; hudt=150; rgiven=1; }
+  } else rgiven=0;
+  if(nearC===0&&lift===0){
+    for(let k=0;k<nLifts;k++){
+      if(npass[curch]>=LT[k].unlock&&Math.abs(Math.trunc(skx)-LT[k].x1)<=2&&Math.abs(Math.trunc(sky)-LT[k].y1)<=2){
+        nearL=k+1;
+        break;
+      }
+    }
+  }
+  if(spd>0.22){
+    trail.push([skx,sky]);
+    if(trail.length>60) trail.shift();
+  }
+  // signatures sonores d'ambiance
+  sDChalet=Math.hypot(skx-chx,sky-chy);
+  sDResto=Math.hypot(skx-reX,sky-reY);
+  let dmin=-1;
+  for(let g=0;g<2;g++){
+    if(GR[g].wait>200) continue;
+    const gr2=Math.max(1,Math.min(GH-1,Math.trunc(GR[g].r)));
+    const d=Math.hypot(skx-pxx[gr2],sky-gr2);
+    if(dmin<0||d<dmin) dmin=d;
+  }
+  sDDam=dmin;
+}
+
+function startEvent(ev){
+  freeRun();
+  curchal=ev;
+  if(ev===0) sayhud("Slalom : toutes les portes !");
+  else if(ev===1){
+    evpar=Math.trunc(GH*2.6);
+    skx=pxx[3]; sky=3.0; chachr=0;
+    sayhud("Chrono -> chalet !");
+  }
+  else if(ev===2){
+    evlimit=750; chachr=0;
+    skx=pxx[3]; sky=3.0;
+    sayhud("Freeride 60s : 400 pts !");
+  }
+  else if(ev===3){
+    const k=npass[curch]>=3?1:0;
+    raceX2=LT[k].x1; raceY2=LT[k].y1;
+    racePar=(GH-LT[k].y2)*3;
+    skx=LT[k].x2; sky=LT[k].y2+1;
+    chachr=0; hdg=0; spd=0.30;
+    sayhud("Course vers la station !");
+  }
+  else if(ev===4){
+    skx=nbg>0?bx[0]:pxx[bcTop]; sky=bcTop+1;
+    chachr=0; hdg=0; spd=0.30;
+    sayhud("Boarder X : toutes les portes !");
+  }
+  scr=S_SKI;
+}
+
+/* ============ RENDU QUALITE PC ============ */
+const TS=12, VW=80, VH=53;
+let terrCv=null,miniCv=null,mx0=0,my0=0,msc=1;
+
+function hash2(x,y){ let h=(x*374761393+y*668265263)>>>0; h=((h^(h>>>13))*1274126177)>>>0; return ((h^(h>>>16))>>>0)/4294967296; }
+
+function prerenderTerrain(){
+  if(typeof document==="undefined") return;
+  terrCv=document.createElement('canvas');
+  terrCv.width=GW*TS; terrCv.height=GH*TS;
+  const c=terrCv.getContext('2d');
+  c.fillStyle="#f2f6ff"; c.fillRect(0,0,terrCv.width,terrCv.height);
+  for(let y=0;y<GH;y++){
+    for(let x=0;x<GW;x++){
+      const t=TY_[y*GW+x],h=HG[y*GW+x];
+      if(t===C_GROOM) continue;
+      const hl=HG[y*GW+Math.max(x-1,0)],hu=HG[Math.max(y-1,0)*GW+x];
+      const sh=(h-hl)+(h-hu)/2;
+      let r,g,b;
+      if(sh>4){ r=250;g=252;b=255; }
+      else if(sh<-3){ r=205;g=216;b=240; }
+      else { r=233;g=239;b=251; }
+      if(h>205&&sh>0){ r=246;g=248;b=255; }
+      const nz=(hash2(x,y)-0.5)*7;
+      r=Math.min(255,Math.max(0,r+nz)); g=Math.min(255,Math.max(0,g+nz)); b=255;
+      c.fillStyle="rgb("+(r|0)+","+(g|0)+","+(b|0)+")";
+      c.fillRect(x*TS,y*TS,TS,TS);
+    }
+  }
+  c.globalAlpha=0.05;
+  for(let k=0;k<GW*GH/8;k++){
+    const x=(hash2(k,17)*GW*TS)|0,y=(hash2(k,91)*GH*TS)|0;
+    c.fillStyle=hash2(k,55)<0.5?"#ffffff":"#cfdded";
+    c.fillRect(x,y,2,2);
+  }
+  c.globalAlpha=1;
+  for(let y=0;y<GH;y++) for(let x=0;x<GW;x++){
+    if(TY_[y*GW+x]!==C_GROOM) continue;
+    const gl=cellAt(x-1,y)!==C_GROOM,gu=cellAt(x,y-1)!==C_GROOM,
+          gd=cellAt(x,y+1)!==C_GROOM,gr2=cellAt(x+1,y)!==C_GROOM;
+    c.fillStyle="#d4e4f6";
+    c.fillRect(x*TS,y*TS,TS,TS);
+    if(gl||gu||gd||gr2){
+      c.fillStyle="#b1c6e6";
+      if(gl) c.fillRect(x*TS,y*TS,3,TS);
+      if(gr2) c.fillRect(x*TS+TS-3,y*TS,3,TS);
+      if(gu) c.fillRect(x*TS,y*TS,TS,3);
+      if(gd) c.fillRect(x*TS,y*TS+TS-3,TS,3);
+    }
+  }
+  c.lineJoin="round"; c.lineCap="round";
+  const strokePiste=(path,wcol,wwor)=>{
+    if(path.length<2) return;
+    c.strokeStyle=wcol; c.lineWidth=TS*2.2;
+    c.beginPath();
+    c.moveTo((path[0][0]+0.5)*TS,(path[0][1]+0.5)*TS);
+    for(let i=1;i<path.length;i++) c.lineTo((path[i][0]+0.5)*TS,(path[i][1]+0.5)*TS);
+    c.stroke();
+    c.strokeStyle=wwor; c.lineWidth=TS*0.7; c.stroke();
+  };
+  const mp=[]; for(let y=0;y<GH;y++) mp.push([pxx[y],y]);
+  strokePiste(mp,"rgba(210,226,246,0.55)","rgba(190,208,236,0.35)");
+  if(CPY0>=0&&CPY1>=0&&CPY1<GH){
+    const cp=[]; for(let y=CPY0;y<=CPY1;y++) if(CPX[y]>=0) cp.push([CPX[y],y]);
+    if(cp.length>1) strokePiste(cp.slice(1,-1),"rgba(214,230,248,0.45)","rgba(196,212,240,0.25)");
+  }
+  for(let y=0;y<GH;y++){
+    for(let x=0;x<GW;x++){
+      const t=TY_[y*GW+x],px=x*TS,py=y*TS,L=TS;
+      if(t===C_TREE){
+        const jx=(hash2(x,y)-0.5)*6,jy=(hash2(y,x)-0.5)*4;
+        c.fillStyle="rgba(30,60,40,0.25)";
+        c.beginPath(); c.ellipse(px+L/2+4,py+L*0.72+3,L*0.42,L*0.2,0,0,7); c.fill();
+        c.fillStyle="#245238";
+        c.beginPath(); c.ellipse(px+L/2+jx,py+L*0.6+jy,L*0.38,L*0.34,0,0,7); c.fill();
+        c.fillStyle="#2f6b42";
+        c.beginPath(); c.ellipse(px+L/2+jx-2,py+L*0.42+jy,L*0.3,L*0.26,0,0,7); c.fill();
+        c.fillStyle="#cfe4f2";
+        c.beginPath(); c.ellipse(px+L/2+jx-3,py+L*0.28+jy,L*0.14,L*0.08,-0.4,0,7); c.fill();
+        c.fillStyle="#5b4128";
+        c.fillRect(px+L/2-2+jx,py+L*0.72,4,L*0.22);
+      } else if(t===C_ROCK){
+        c.fillStyle="#6f6a62";
+        c.beginPath(); c.ellipse(px+L/2,py+L*0.62,L*0.4,L*0.28,0,0,7); c.fill();
+        c.fillStyle="#9a948b";
+        c.beginPath(); c.ellipse(px+L/2-3,py+L*0.48,L*0.26,L*0.16,0,0,7); c.fill();
+        c.fillStyle="#eef3fb";
+        c.beginPath(); c.ellipse(px+L/2-4,py+L*0.38,L*0.14,L*0.06,0,0,7); c.fill();
+      } else if(t===C_CLIF){
+        c.fillStyle="#46443f"; c.fillRect(px,py,L,L*0.45);
+        c.fillStyle="#33322e"; c.fillRect(px,py+L*0.45,L,L*0.55);
+        c.fillStyle="#c9d4e4"; c.fillRect(px,py-4,L,4);
+      } else if(t===C_KICK){
+        c.fillStyle="#e88f28";
+        c.beginPath(); c.moveTo(px,py+L*0.85); c.lineTo(px+L/2,py+L*0.2); c.lineTo(px+L,py+L*0.85); c.closePath(); c.fill();
+        c.fillStyle="#f7b551"; c.fillRect(px,py+L*0.78,L,L*0.1);
+      } else if(t===C_BILD){
+        c.fillStyle="#965a32"; c.fillRect(px,py+L*0.3,L,L*0.7);
+        c.fillStyle="#a8452e"; c.fillRect(px-2,py+L*0.12,L+4,L*0.26);
+        c.fillStyle="#c25a3c"; c.fillRect(px-2,py+L*0.12,L+4,L*0.09);
+        c.fillStyle="#c8d6e8"; c.fillRect(px-2,py+L*0.08,L+4,L*0.06);
+        c.fillStyle="#ffd97a"; c.fillRect(px+L*0.22,py+L*0.55,5,6); c.fillRect(px+L*0.62,py+L*0.55,5,6);
+      } else if(t===C_RAIL){
+        c.fillStyle="#5a5f70"; c.fillRect(px,py+L*0.42,L,L*0.2);
+        c.fillStyle="#cdd3e0"; c.fillRect(px,py+L*0.46,L,3);
+      } else if(t===C_BOSS){
+        c.fillStyle="#c8d4e8";
+        c.beginPath(); c.ellipse(px+L/2,py+L*0.62,L*0.38,L*0.26,0,0,7); c.fill();
+        c.fillStyle="#ffffff";
+        c.beginPath(); c.ellipse(px+L/2,py+L*0.52,L*0.26,L*0.14,0,0,7); c.fill();
+      } else if(t===C_PIPE){
+        c.fillStyle="#6f97cc"; c.fillRect(px,py+L*0.2,L,L*0.6);
+        c.fillStyle="#c8dcf2"; c.fillRect(px+2,py+L*0.4,L-4,L*0.25);
+      } else if(t===C_RAMP){
+        c.fillStyle="#a5afc3";
+        c.beginPath(); c.moveTo(px,py+L*0.9); c.lineTo(px+L,py+L*0.3); c.lineTo(px+L,py+L*0.9); c.closePath(); c.fill();
+        c.fillStyle="#dfe6f8";
+        c.beginPath(); c.moveTo(px+L*0.55,py+L*0.52); c.lineTo(px+L,py+L*0.3); c.lineTo(px+L,py+L*0.52); c.closePath(); c.fill();
+      } else if(t===C_STRT){
+        c.fillStyle="#d23c3c"; c.fillRect(px,py+L*0.3,L,L*0.28);
+        c.fillStyle="#ffffff"; c.fillRect(px,py+L*0.3,L*0.35,L*0.28);
+      } else if(t===C_GATE){
+        c.fillStyle="#2456c8";
+        c.fillRect(px+2,py+2,4,L-4);
+        c.fillRect(px+L-6,py+2,4,L-4);
+        c.fillStyle="#ff5a5a";
+        c.fillRect(px+2,py+2,L-4,4);
+      }
+    }
+  }
+}
+
+function prerenderMiniMap(){
+  if(typeof document==="undefined") return;
+  msc=Math.min((960-60)/GW,(640-130)/GH);
+  const mw=Math.round(GW*msc),mh=Math.round(GH*msc);
+  miniCv=document.createElement('canvas');
+  miniCv.width=Math.max(32,mw); miniCv.height=Math.max(32,mh);
+  const c=miniCv.getContext('2d');
+  mx0=Math.round((960-mw)/2); my0=Math.round((640-20-mh)/2)+6;
+  for(let y=0;y<GH;y++) for(let x=0;x<GW;x++){
+    const t=TY_[y*GW+x];
+    let col;
+    if(t===C_GROOM) col="#4fd370";
+    else if(t===C_TREE) col="#2c6b42";
+    else if(t===C_ROCK||t===C_CLIF) col="#54575e";
+    else if(t===C_BILD) col="#e04c3c";
+    else if(t===C_KICK) col="#f09a2c";
+    else if(t===C_RAIL) col="#6b7286";
+    else if(t===C_BOSS) col="#c9d7ee";
+    else if(t===C_PIPE) col="#5f96d8";
+    else if(t===C_RAMP) col="#9aa5bd";
+    else col=HG[y*GW+x]>205?"#dfe8f6":"#f2f6ff";
+    c.fillStyle=col;
+    c.fillRect(x*msc,y*msc,Math.ceil(msc),Math.ceil(msc));
+  }
+}
+
+const flakes=[];
+for(let i=0;i<140;i++) flakes.push({x:Math.random()*960,y:Math.random()*640,v:1.2+Math.random()*2.2,s:1+Math.random()*2.6,w:Math.random()*6.28});
+
+let cv=null,ctx=null,hudTop=null,hudBot=null,hudTL=null,hudTR=null,panel=null,stage=null;
+const FRAME=80;
+let acc=0,lastT=0;
+
+function gameStep(){
+  fr++;
+  if(scr===S_SKI&&--weaT<=0){
+    wea=ri(3); weaT=900+ri(900);
+    sayhud(["Grand soleil !","Coucher de soleil...","Il neige !"][wea]);
+  }
+  doScreenLogic();
+  if(scr===S_SKI||scr===S_MAP){ npcTick(); scync(); }
+}
+
+/* ============ LOGIQUE PAR ECRAN (port du main loop C) ============ */
+function hidePanel(){ if(panel){ panel.className=""; panel.innerHTML=""; } }
+function el(html){ const d=document.createElement("div"); d.innerHTML=html; return d.firstElementChild; }
+
+function doScreenLogic(){
+  if(scr===S_TIT){
+    if(pr(6)){ scr=S_AIDE; pg=0; showAide(); }
+    else if(pr(0)||pr(3)){ scr=S_CODE; ccur=0; hudt=0; showCode(); }
+    else if(pr(1)||pr(2)){ scr=S_SEL; selv=0; showSel(); }
+    else if(pr(4)){ S_.init(); curch=imini(unlocked,NM)-1; newMountain(curch); scr=S_SKI; hidePanel(); }
+  }
+  else if(scr===S_CODE){
+    if(pr(0)) ccur=(ccur+3)%4;
+    if(pr(3)) ccur=(ccur+1)%4;
+    if(pr(1)) coded[ccur]=(coded[ccur]+1)%10;
+    if(pr(2)) coded[ccur]=(coded[ccur]+9)%10;
+    refreshCode();
+    if(pr(4)){
+      const code=coded[0]*1000+coded[1]*100+coded[2]*10+coded[3];
+      let ok2=false;
+      for(let l=1;l<NM;l++) if(code===codeFor(l)){ unlocked=imaxi(unlocked,l+1); ok2=true; }
+      if(ok2){ saveCodes(); scr=S_TIT; showTitle(); }
+      else { sayhud("Code invalide"); refreshCode(); }
+    }
+    if(pr(5)){ scr=S_TIT; showTitle(); }
+    if(hudt>0) hudt--;
+  }
+  else if(scr===S_AIDE){
+    if(pr(4)){ pg=(pg+1)%3; refreshAide(); }
+    if(pr(5)){ scr=S_TIT; showTitle(); }
+  }
+  else if(scr===S_SEL){
+    if(pr(1)) selv=(selv+NM-1)%NM;
+    if(pr(2)) selv=(selv+1)%NM;
+    if(pr(4)&&selv<unlocked){ S_.init(); curch=selv; newMountain(selv); scr=S_SKI; hidePanel(); }
+    else if(pr(5)){ scr=S_TIT; showTitle(); }
+    refreshSel();
+  }
+  else if(scr===S_SKI){
+    phys();
+    if(scr===S_SKI){
+      const okpr=pr(4);
+      if(hudt>0) hudt--;
+      if(nearC&&okpr){ selv=0; cham=0; scr=S_CHA; showCha(); }
+      else if(nearL&&okpr&&lift===0&&(spd<0.20||kd(2))) boardLift(nearL-1);
+      else if(nearL&&okpr&&lift===0) sayhud("Freine tout de suite pour embarquer !");
+      if(kd(6)){
+        vestT++;
+        if(vestT>=14){ vestT=0; scr=S_VES; showVes(); }
+      } else {
+        if(vestT>0&&vestT<=10){ scr=S_MAP; showMapPanel(); }
+        vestT=0;
+      }
+      if(pr(5)){ saveAll(); scr=S_TIT; showTitle(); }
+    }
+  }
+  else if(scr===S_MAP){
+    if(pr(6)||pr(4)||pr(5)){ scr=S_SKI; hidePanel(); }
+  }
+  else if(scr===S_CHA){
+    if(hudt>0) hudt--;
+    if(cham===0){
+      if(pr(1)) selv=(selv+7)%8;
+      if(pr(2)) selv=(selv+1)%8;
+      if(pr(4)){
+        if(selv===7){ curchal=-1; scr=S_SKI; hidePanel(); }
+        else if(selv===6){ cham=2; selv2=0; showVes(); }
+        else if(selv===5){ cham=1; selv2=imini(selv2,Math.max(0,nLifts-1)); refreshCha(); }
+        else if(npass[curch]>=EVA[selv]){ startEvent(selv); hidePanel(); }
+        else { hudmsg="Verrouille : "+EVA[selv]+" pass requis !"; hudt=180; }
+      }
+      if(pr(5)){ curchal=-1; scr=S_SKI; hidePanel(); }
+      refreshCha();
+    }
+    else if(cham===1){
+      if(pr(1)) selv2=(selv2+nLifts-1)%nLifts;
+      if(pr(2)) selv2=(selv2+1)%nLifts;
+      if(pr(5)){ cham=0; selv=5; scr=S_CHA; }
+      if(pr(4)){
+        if(npass[curch]>=LT[selv2].unlock){ const k=selv2; cham=0; scr=S_SKI; hidePanel(); boardLift(k); }
+        else { hudmsg="Verrouillee : "+LT[selv2].unlock+" pass requis"; hudt=180; }
+      }
+      refreshCha();
+    }
+    else {
+      if(pr(1)||pr(2)) mode=(mode+1)%4;
+      if(pr(3)) outfit=(outfit+1)%8;
+      if(pr(0)) outfit=(outfit+7)%8;
+      if(pr(5)||pr(4)){ cham=0; scr=S_SKI; hidePanel(); }
+      refreshVes();
+    }
+  }
+  else if(scr===S_VES){
+    if(pr(1)||pr(2)) mode=(mode+1)%4;
+    if(pr(3)) outfit=(outfit+1)%8;
+    if(pr(0)) outfit=(outfit+7)%8;
+    if(pr(5)||pr(4)){ scr=S_SKI; hidePanel(); }
+    refreshVes();
+  }
+  else if(scr===S_CPL){
+    if(pr(4)){ completeChallenge(cplType); freeRun(); curchal=-1; scr=S_SKI; hidePanel(); }
+    else if(pr(5)){ curchal=-1; scr=S_TIT; showTitle(); }
+  }
+}
+
+/* ============ PANNEAUX DOM ============ */
+function rowsHtml(items,sel){
+  let h="";
+  for(let i=0;i<items.length;i++)
+    h+="<div class='row"+(i===sel?" sel":"")+(items[i].lock?" lock":"")+"'>"+items[i].t+"</div>";
+  return h;
+}
+function panelCard(html){ if(!panel) return; panel.className="on"; panel.innerHTML="<div class='card'>"+html+"</div>"; }
+function footRow(t){ return "<div class='foot'>"+t+"</div>"; }
+
+function showTitle(){
+  hudTop.style.display="none"; hudBot.style.display="none";
+  panelCard(
+    "<h1>GRAND MONT <span>ADVENTURE</span></h1>"+
+    "<div class='dim'>10 stations de ski &mdash; openworld</div>"+
+    "<div class='row'><span class='keycap'>Entr&#233;e</span> Jouer (station " + imini(unlocked,NM) + "/10)</div>"+
+    "<div class='row'><span class='keycap'>&#8593;&#8595;</span> Choisir une station</div>"+
+    "<div class='row'><span class='keycap'>&#8592;&#8594;</span> Code de d&#233;blocage</div>"+
+    "<div class='row'><span class='keycap'>Tab</span> Aide &nbsp; <span class='keycap'>M</span>/tenir <span class='keycap'>Tab</span> Carte &amp; Vestiaire en jeu</div>"+
+    "<div class='green'>Station(s) d&#233;bloqu&#233;e(s) : "+unlocked+"/10</div>"+
+    footRow("Son au premier OK (WebAudio synth&#233;tis&#233;, 100% fichier unique)"));
+}
+function showCode(){
+  panelCard(
+    "<h1>CODE DE <span>D&#201;BLOCAGE</span></h1>"+
+    "<div class='dim'>(gagn&#233; en finissant une station)</div>"+
+    "<div class='codeboxes'>"+
+      "<div class='cb cur' id='cb0'>0</div><div class='cb' id='cb1'>0</div>"+
+      "<div class='cb' id='cb2'>0</div><div class='cb' id='cb3'>0</div></div>"+
+    "<div class='row'><span class='keycap'>&#8592;&#8594;</span> chiffre &nbsp; <span class='keycap'>&#8593;&#8595;</span> valeur &nbsp; <span class='keycap'>Entr&#233;e</span> valider</div>"+
+    "<div id='codemsg' class='foot'></div>"+
+    footRow("<span class='keycap'>Echap</span> retour"));
+}
+function refreshCode(){
+  if(scr!==S_CODE||!panel) return;
+  for(let i=0;i<4;i++){
+    const b=document.getElementById("cb"+i); if(!b) return;
+    b.textContent=coded[i];
+    b.className="cb"+(i===ccur?" cur":"");
+  }
+  const m=document.getElementById("codemsg");
+  if(m) m.textContent=(hudt>0?hudmsg:"");
+}
+function showAide(){
+  refreshAide();
+}
+function refreshAide(){
+  if(scr!==S_AIDE) return;
+  const PAGES=[
+    ["Skier","<div class='row'><span class='keycap'>&#8592;&#8594;</span> tourner. La pente donne la vitesse, <span class='keycap'>&#8595;</span> freine.</div>"+
+      "<div class='row'>En saut : <span class='keycap'>&#8592;&#8594;</span> vrille, <span class='keycap'>&#8593;</span> salto avant, <span class='keycap'>&#8595;</span> salto arri&#232;re, <span class='keycap'>Entr&#233;e</span> tenu = grab.</div>"+
+      "<div class='row'>Combo = les encha&#238;ner avant de retoucher la neige (x2, x3&#8230;)</div>"+
+      "<div class='row'>Carving : rapide, mais &#224; l'envers = CHUTE. Freestyle : switch autoris&#233;, tourne plus, tricks x1.2.</div>"+
+      "<div class='row'><span class='keycap'>1&#8230;4</span> : changer de mat&#233;riel directement en piste.</div>"],
+    ["D&#233;fis &amp; Pass","<div class='row'>Va au chalet (Entr&#233;e) : 5 d&#233;fis &mdash; Slalom, Chrono (portes + fant\u00f4me de ton record), Freeride 60s, Course A-B avec fant\u00f4me, Boarder X.</div>"+
+      "<div class='row'>Les d&#233;fis et les remont&#233;es se d&#233;verrouillent avec les PASS (0/3/6/9/12&#8230;).</div>"+
+      "<div class='row'>9 PASS d'or cach&#233;s hors-piste (visibles dor&#233;s sur la carte <span class='keycap'>M</span>), ou gagn&#233;s aux &#233;preuves. Il en faut "+needM(0)+"\u2013"+needM(9)+" par montagne.</div>"+
+      "<div class='row'>Restaure-toi au refuge d'altitude : les danseurs te font une ambiance !</div>"],
+    ["Vestiaire &amp; noms","<div class='row'>En piste, tiens <span class='keycap'>Tab</span> ~1s : vestiaire (couleur d'outfit + ski/snowboard, carving/freestyle).</div>"+
+      "<div class='row'>Tape courte <span class='keycap'>Tab</span> : carte de la montagne.</div>"+
+      "<div class='row'>Pistes et remont\u00e9es prennent les noms locaux : Piste/Pista/Abfahrt/L\u00f8ype, Sessellift, Schlepplift, Gondel, Seilbahn, Stolheis, Taubane, Telesilla&#8230;</div>"+
+      "<div class='row'>M\u00e9t\u00e9o vivante : soleil, couchers orang\u00e9s, chutes de neige. Dameuses, train de montagne, skieurs IA.</div>"]];
+  const p=PAGES[pg];
+  panelCard("<h1>AIDE &mdash; <span>"+p[0]+"</span> ("+(pg+1)+"/3)</h1>"+p[1]+
+    footRow("<span class='keycap'>Entr&#233;e</span> page suivante &nbsp; <span class='keycap'>Echap</span> retour"));
+}
+function showSel(){
+  panelCard("<h1>CHOISIR UNE <span>STATION</span></h1><div id='sellist'></div>"+
+    footRow("<span class='keycap'>&#8593;&#8595;</span> navigation &nbsp; <span class='keycap'>Entr&#233;e</span> skier &nbsp; <span class='keycap'>Echap</span> retour"));
+  refreshSel();
+}
+function refreshSel(){
+  if(scr!==S_SEL) return;
+  const box=document.getElementById("sellist"); if(!box) return;
+  const items=[];
+  for(let i=0;i<NM;i++){
+    let t,i2_lock=false;
+    if(i<unlocked) t=(i+1)+". "+MNAMES[i]+"  \u2192 "+CO[CC[i]].nom;
+    else { t=(i+1)+". "+MNAMES[i]+"  \u00d7 ("+(i===unlocked?needM(unlocked-1):0)+" pass req.)"; i2_lock=true; }
+    items.push({t: t, lock: i2_lock});
+  }
+  box.innerHTML=rowsHtml(items,selv);
+}
+function showMapPanel(){
+  hidePanel();
+  hudTop.style.display="flex";
+  hudTL.innerHTML="<b>"+MONTB+"</b> &mdash; "+selCountry();
+  hudTR.innerHTML="PASS "+npass[curch]+"/"+needM(curch);
+  hudBot.style.display="block";
+  hudBot.innerHTML="Piste : <span class='green'>"+PNAMEB+"</span> &nbsp;\u2022&nbsp; "+LNAMEB[0]+" &nbsp;\u2022&nbsp; "+VNAMEB[0]+
+    " &nbsp;\u2022&nbsp; <span class='dim'>Entr\u00e9e/T : retour au ski</span>";
+}
+function showCha(){
+  refreshCha();
+}
+function refreshCha(){
+  if(scr!==S_CHA) return;
+  let body="";
+  if(cham===0){
+    const CHROWS=["Slalom","Chrono","Freeride","Course A-B","Boarder X","Remont\u00e9es","Vestiaire","Sortir"];
+    const items=[];
+    for(let i=0;i<8;i++){
+      let t,lock=false;
+      if(i<5){
+        if(npass[curch]<EVA[i]) { t=CHROWS[i]+"  ("+EVA[i]+" pass requis)"; lock=true; }
+        else t=CHROWS[i]+((evdone[curch]&(1<<i))?"  \u2605":"");
+      } else t=CHROWS[i];
+      items.push({t:t,lock:lock});
+    }
+    body="<div id='chalist'>"+rowsHtml(items,selv)+"</div>"+
+      "<div class='green'>Restaurant d'altitude : "+RNAMEB+"</div>";
+  } else if(cham===1){
+    const items=[];
+    for(let k=0;k<nLifts;k++){
+      const unl=npass[curch]>=LT[k].unlock;
+      items.push({t:LNAMEB[k]+(unl?"":"  (verrouill\u00e9e : "+LT[k].unlock+" pass)"),lock:!unl});
+    }
+    body="<div id='chalist'>"+rowsHtml(items,selv2)+"</div>";
+  }
+  panelCard(
+    "<h1>"+CHANAM+"</h1>"+
+    "<div class='dim'>"+MONTB+" \u2014 "+selCountry()+" \u2022 "+VNAMEB[0]+"</div>"+
+    "<div class='gold'>PASS "+npass[curch]+" / "+needM(curch)+"</div>"+
+    body+
+    footRow(cham===1
+      ? "<span class='keycap'>Entr\u00e9e</span> embarquer &nbsp; <span class='keycap'>Echap</span> retour"
+      : "<span class='keycap'>Entr\u00e9e</span> choisir &nbsp; <span class='keycap'>Echap</span> retourner skier"));
+}
+function showVes(){
+  refreshVes();
+}
+function refreshVes(){
+  if(scr!==S_VES&&scr!==S_CHA) return;
+  let sw="";
+  for(let i=0;i<8;i++)
+    sw+="<div class='sw"+(i===outfit?" sel":"")+"' style='background:rgb("+OUTC[i][0]+","+OUTC[i][1]+","+OUTC[i][2]+")'></div>";
+  panelCard(
+    "<h1>VESTIAIRE</h1>"+
+    "<div class='row'>Mat\u00e9riel <span class='keycap'>&#8593;&#8595;</span> : <b>"+MODES[mode]+"</b></div>"+
+    "<div class='dim'>"+((mode&1)?"Switch autoris\u00e9, tourne plus, tricks x1.2":"Rapide mais \u00e0 l'envers = CHUTE")+"</div>"+
+    "<div class='row'>Couleur <span class='keycap'>&#8592;&#8594;</span> : "+(outfit+1)+"/8</div>"+
+    "<div class='swatches'>"+sw+"</div>"+
+    "<div class='gold'>Record saut : "+jrec+" m</div>"+
+    footRow("<span class='keycap'>Entr\u00e9e</span>/<span class='keycap'>Echap</span> retour au ski"));
+}
+function showCpl(){
+  let det;
+  if(cplType===1) det="Temps : "+Math.floor(chachr/13)+"s / "+Math.floor(evpar/13)+"s";
+  else if(cplType===3) det="Temps : "+Math.floor(chachr/13)+"s / "+Math.floor(racePar/13)+"s";
+  else if(cplType===2) det="Points : "+score+" / 400";
+  else if(cplType===4) det="Portes : "+nbg+"/"+nbg;
+  else det="Points : "+score;
+  panelCard(
+    "<h1>"+EVN[cplType]+" <span>REUSSI !</span></h1>"+
+    "<div class='row'>"+det+"</div>"+
+    "<div class='gold'>+"+EVR[cplType]+" PASS ("+npass[curch]+"/"+needM(curch)+")</div>"+
+    "<div class='green'>Record saut : "+jrec+" m</div>"+
+    (hudt>0?"<div>"+hudmsg+"</div>":"")+
+    footRow("<span class='keycap'>Entr\u00e9e</span> rejouer &nbsp; <span class='keycap'>Echap</span> menu"));
+}
+
+/* ============ HUD ============ */
+function updateHud(){
+  if(!hudTop) return;
+  if(scr!==S_SKI&&scr!==S_MAP) return;
+  let tl,tr;
+  if(scr===S_MAP){
+    tl="<b>"+MONTB+"</b> &mdash; "+selCountry();
+    tr="PASS "+npass[curch]+"/"+needM(curch);
+    hudBot.innerHTML="Piste : <span class='green'>"+PNAMEB+"</span> \u2022 "+LNAMEB[0]+" \u2022 "+VNAMEB[0]+
+      " \u2022 <span class='dim'>Entr\u00e9e/T : retour au ski</span>";
+  } else if(curchal===0){
+    tl="Portes "+gatesPassed()+"/"+ng+" \u2014 Slalom";
+    tr=spdInfo();
+  } else if(curchal===1){
+    tl="CHRONO "+Math.floor(chachr/13)+"s"+(bestT[curch][0]?" (REC "+Math.floor(bestT[curch][0]/13)+"s)":"");
+    tr=spdInfo();
+  } else if(curchal===3){
+    tl="COURSE A-B "+Math.floor(chachr/13)+"s"+(bestT[curch][1]?" (REC "+Math.floor(bestT[curch][1]/13)+"s)":"");
+    tr=spdInfo();
+  } else if(curchal===4){
+    tl="Boarder X : portes "+bxCount_()+"/"+nbg;
+    tr=spdInfo();
+  } else if(curchal===2){
+    tl="Freeride : "+score+" / 400 pts \u2014 "+Math.floor((evlimit-chachr)/13)+"s restantes";
+    tr=spdInfo();
+  } else {
+    tl="<b>"+MONTB+"</b> &mdash; "+selCountry();
+    tr=spdInfo();
+  }
+  hudTL.innerHTML=tl; hudTR.innerHTML=tr;
+  hudTop.style.display="flex"; hudBot.style.display="block";
+  if(hudt>0) hudBot.innerHTML="<span style='color:#ffe06a'>"+hudmsg+"</span>";
+  else if(nearL) hudBot.innerHTML="<span class='green'>Entr\u00e9e : remont\u00e9e "+LNAMEB[nearL-1]+"</span> <span class='dim'>(ralentis !)</span>";
+  else if(nearR) hudBot.innerHTML="<span class='green'>Restaurant d'altitude : "+RNAMEB+" \u2014 ambiance &amp; danse !</span>";
+  else if(nearC) hudBot.innerHTML="<span class='green'>Entr\u00e9e : chalet "+CHANAM+" (d\u00e9fis / remont\u00e9es / vestiaire)</span>";
+  else hudBot.innerHTML="<span class='dim'>\u2190\u2192 tourner \u2022 \u2193 freiner \u2022 M : carte \u2022 Tab maintenu : vestiaire \u2022 1-4 : mat\u00e9riel</span>";
+}
+function spdInfo(){
+  return "<span class='"+(air?"gold":"")+"'>"+Math.round(spd*130)+" km/h</span> \u2022 PASS "+npass[curch]+"/"+needM(curch)+
+    " \u2022 "+MODES[mode][0];
+}
+
+/* ============ RENDU SKI ============ */
+function lbl(c,px2,py2,txt,col,size){
+  if(!txt) return;
+  c.font=(size||13)+"px 'Segoe UI',system-ui,sans-serif";
+  c.textAlign="center";
+  c.lineWidth=3; c.strokeStyle="rgba(6,10,20,.85)";
+  c.strokeText(txt,px2,py2);
+  c.fillStyle=col||"#fff"; c.fillText(txt,px2,py2);
+}
+function renderSki(alpha){
+  if(!ctx) return;
+  const useInterp=(lift===0&&air>=0);
+  let ix,pyp;
+  if(lift>0){
+    const k=lift-1, il=Math.min(1,pliftp+(liftp-pliftp)*alpha);
+    ix=LT[k].x1+(LT[k].x2-LT[k].x1)*il;
+    pyp=LT[k].y1+(LT[k].y2-LT[k].y1)*il;
+  } else {
+    ix=px1+(skx-px1)*alpha;
+    pyp=py1+(sky-py1)*alpha;
+  }
+  const camx=imaxi(0,imini(GW-VW,Math.round(ix-VW/2)));
+  const camy=imaxi(0,imini(GH-VH,Math.round(pyp-VH/2)));
+  ctx.fillStyle="#eef4ff"; ctx.fillRect(0,0,960,640);
+  if(terrCv) ctx.drawImage(terrCv,camx*TS,camy*TS,VW*TS,VH*TS,0,0,VW*TS,VH*TS);
+  const cX=(cx2)=>(cx2-camx)*TS, cY=(cy2)=>(cy2-camy)*TS;
+  // ---- remontees : cable + pylones + cabines en mouvement + vehicule du joueur
+  for(let k=0;k<nLifts;k++){
+    const locked=npass[curch]<LT[k].unlock;
+    const x1=cX(LT[k].x1)+TS/2,y1=cY(LT[k].y1)+TS/2,x2=cX(LT[k].x2)+TS/2,y2=cY(LT[k].y2)+TS/2;
+    if((x1<-40&&x2<-40)||(x1>1000&&x2>1000)||(y1<-40&&y2<-40)||(y1>680&&y2>680)) continue;
+    ctx.strokeStyle=locked?"rgba(120,125,140,.8)":(LT[k].type===3?"#40424a":(LT[k].type===2?"#6d3f9e":(LT[k].type===1?"#235a38":"#2a6fa8")));
+    ctx.lineWidth=LT[k].type===0?1.5:2.5;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.fillStyle="#5a4a32";
+    for(let t=0;t<=12;t++){
+      const px3=x1+(x2-x1)*t/12,py3=y1+(y2-y1)*t/12;
+      ctx.fillRect(px3-2,py3-1,4,10);
+    }
+    ctx.fillStyle=LCOL(LT[k].type,locked);
+    ctx.fillRect(x1-8,y1-6,16,10); ctx.fillRect(x2-8,y2-10,LT[k].type===3?20:16,10);
+    // vehicules le long du cable (decor anime)
+    for(let t=1;t<10;t++){
+      const tt=(t/10+fr*0.002*(k%2?1:-1))%1;
+      const vx2=x1+(x2-x1)*tt,vy2=y1+(y2-y1)*tt;
+      ctx.fillStyle=LCOL(LT[k].type,false);
+      if(LT[k].type>=2){ ctx.fillRect(vx2-4,vy2-4,8,7); ctx.strokeStyle="rgba(90,95,110,.9)"; ctx.lineWidth=1; ctx.strokeRect(vx2-4,vy2-4,8,7); }
+      else if(LT[k].type===1){ ctx.fillRect(vx2-3,vy2-2,6,4); }
+      else { ctx.fillRect(vx2-1,vy2,2,4); }
+    }
+  }
+  // ---- diamants d'or (passes) scintillants
+  for(let i=0;i<NPMAXI;i++){
+    if(tpass[i]) continue;
+    const px3=cX(PASX[i])+TS/2,py3=cY(PASY[i])+TS/2;
+    if(px3<-20||px3>980||py3<-20||py3>660) continue;
+    const tw=0.75+0.25*Math.sin(fr*0.15+i);
+    ctx.save(); ctx.translate(px3,py3); ctx.rotate(0.785);
+    ctx.fillStyle="rgba(255,216,67,"+(0.65+0.35*tw)+")";
+    ctx.fillRect(-5*tw,-5*tw,10*tw,10*tw);
+    ctx.fillStyle="rgba(255,255,255,.9)"; ctx.fillRect(-2,-2,4,4);
+    ctx.restore();
+    if(fr%30<15) lbl(ctx,px3,py3-12,"pass","#ffd843",11);
+  }
+  // ---- tracé du fantome (meilleur temps) + skieur fantome
+  if((curchal===1||curchal===3)&&ghLen>1){
+    ctx.strokeStyle="rgba(200,214,240,.65)"; ctx.lineWidth=2;
+    ctx.setLineDash([6,5]);
+    ctx.beginPath();
+    for(let i=0;i<ghLen;i++){
+      const gxv=cX(GHOST[i][0]/16),gyv=cY(GHOST[i][1]/16);
+      if(i===0) ctx.moveTo(gxv,gyv); else ctx.lineTo(gxv,gyv);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    const gi=imini(ghRec,ghLen)-1;
+    if(gi>=0){
+      const gx2=cX(GHOST[gi][0]/16),gy2=cY(GHOST[gi][1]/16);
+      ctx.fillStyle="rgba(235,242,255,.9)";
+      ctx.beginPath(); ctx.arc(gx2,gy2,4,0,6.283); ctx.fill();
+      ctx.fillStyle="rgba(160,175,205,.9)"; ctx.fillRect(gx2-3,gy2+3,6,6);
+    }
+  }
+  // ---- drapeau arrivee course A-B
+  if(curchal===3){
+    const fx=cX(raceX2)+TS/2,fy=cY(raceY2);
+    ctx.fillStyle="#e04030"; ctx.fillRect(fx-8,fy,16,4);
+    ctx.fillStyle="#fff"; ctx.fillRect(fx-1,fy-16,2,16);
+  }
+  // ---- dameuses (orange + gyro)
+  for(let g=0;g<2;g++){
+    if(GR[g].wait>200) continue;
+    const gr2=Math.max(1,Math.min(GH-1,Math.trunc(GR[g].r)));
+    const sx=cX(pxx[gr2])+TS/2,sy=cY(gr2)+TS/2;
+    if(sx<-20||sx>980||sy<-20||sy>660) continue;
+    ctx.fillStyle="rgb(240,140,20)";
+    ctx.fillRect(sx-7,sy-6,14,10);
+    ctx.fillStyle="rgb(180,185,200)";
+    ctx.fillRect(GR[g].dir<0?sx-11:sx+7,sy-6,4,10);
+    ctx.fillStyle="rgba(30,30,40,.85)"; ctx.fillRect(sx-5,sy-9,10,3);
+    ctx.fillStyle=fr%30<15?"#ff3030":"#552222";
+    ctx.fillRect(sx-2,sy-12,4,3);
+  }
+  // ---- train de montagne : rail pointille + gare + 2 voitures + fumees
+  if(trnOn){
+    const ex=chx,ey=chy+1;
+    ctx.strokeStyle="#4a4238"; ctx.lineWidth=2; ctx.setLineDash([5,4]);
+    ctx.beginPath();
+    ctx.moveTo(cX(stX)+TS/2,cY(stY+2)+4);
+    ctx.lineTo(cX(ex)+TS/2,cY(ey)+4);
+    ctx.stroke(); ctx.setLineDash([]);
+    for(let c2=0;c2<2;c2++){
+      let tt2=trnT100-c2*6; if(tt2<0) tt2=0;
+      const cx2=cX(stX+(ex-stX)*tt2/100)+TS/2,cy2=cY(stY+2+(ey-stY-2)*tt2/100)+4;
+      ctx.fillStyle="#c23a2c"; ctx.fillRect(cx2-8,cy2-6,16,10);
+      ctx.fillStyle="#f9dc78"; ctx.fillRect(cx2-5,cy2-4,10,5);
+      if(c2===0&&trnWait>0){
+        ctx.fillStyle="rgba(235,235,245,.7)";
+        const fs=3+(trnWait%20)/6;
+        ctx.beginPath(); ctx.arc(cx2+7,cy2-8-(trnWait/10)%18,fs,0,6.283); ctx.fill();
+      }
+    }
+  }
+  // ---- PNJ (skieurs, file d'attente, danseurs, baladeurs siffleurs)
+  for(let i2=0;i2<NC_.length;i2++){
+    const n=NC_[i2];
+    const bob=(n.st===3)?(Math.floor(fr/6)%2):0;
+    const sx=cX(n.x)+TS/2,sy=cY(n.y)+TS/2-bob;
+    if(sx<-10||sx>970||sy<-10||sy>650) continue;
+    let col=n.kind===0?"rgb(40,120,220)":(n.kind===1?"rgb(200,60,160)":"rgb(60,180,140)");
+    let jcol=col;
+    if(n.st===3){ col=n.kind===0?"#e04030":"#40c060"; jcol=col; }
+    ctx.fillStyle=col; ctx.fillRect(sx-3,sy-6,7,8);
+    ctx.fillStyle="rgb(250,210,170)"; ctx.fillRect(sx-2,sy-11,5,5);
+    ctx.fillStyle="#222244"; ctx.fillRect(sx-4,sy+1,3,6); ctx.fillRect(sx+2,sy+1,3,6);
+    if(n.st===3){ ctx.fillStyle=jcol; ctx.fillRect(sx-7,sy-10-bob,4,4); ctx.fillRect(sx+4,sy-11-bob,4,4); }
+    if(n.st===4&&fr%16<8){ ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(sx+6,sy-13,2,0,6.283); ctx.fill(); }
+  }
+  // ---- traces de glisse
+  if(trail.length>1){
+    ctx.strokeStyle="rgba(140,165,215,.55)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(cX(trail[0][0]),cY(trail[0][1]));
+    for(let i=1;i<trail.length;i++) ctx.lineTo(cX(trail[i][0]),cY(trail[i][1]));
+    ctx.stroke();
+  }
+  // ---- skieur du joueur (interpole)
+  if(!lift){
+    const dx=Math.sin(hdg),dy=Math.cos(hdg);
+    const sx=cX(ix)+TS/2,sy=cY(pyp)+TS/2;
+    if(crash===0){
+      ctx.strokeStyle="rgb(30,30,60)"; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(sx-dx*7,sy-dy*7); ctx.lineTo(sx+dx*9,sy+dy*9); ctx.stroke();
+      ctx.fillStyle="rgb("+OUTC[outfit][0]+","+OUTC[outfit][1]+","+OUTC[outfit][2]+")";
+      ctx.fillRect(sx-4,sy-9,9,10);
+      ctx.fillStyle="rgb(250,210,170)"; ctx.fillRect(sx-2,sy-14,6,6);
+      if(air>0){
+        ctx.fillStyle="rgba(255,255,255,.9)";
+        lbl(ctx,sx,sy-22,(spin?(spin<0?(-spin)+"G":spin+"D"):"")+(fp?" saltoF":"")+(bp?" saltoB":"")+(grb?" grab":"")+(combo>1?" x"+combo:""),"#ffe06a",14);
+      }
+    } else {
+      ctx.fillStyle="rgb(120,110,100)";
+      ctx.beginPath(); ctx.ellipse(sx,sy,12,5,0,0,6.283); ctx.fill();
+      ctx.fillStyle="rgb("+OUTC[outfit][0]+","+OUTC[outfit][1]+","+OUTC[outfit][2]+")";
+      ctx.fillRect(sx-5,sy-4,11,5);
+      ctx.fillStyle="rgb(250,210,170)"; ctx.fillRect(sx+4,sy-6,5,5);
+    }
+  }
+  // ---- meteo
+  if(wea===1){
+    const grd=ctx.createLinearGradient(0,0,0,640);
+    grd.addColorStop(0,"rgba(255,120,30,.28)"); grd.addColorStop(0.5,"rgba(255,80,40,.12)"); grd.addColorStop(1,"rgba(120,40,80,.15)");
+    ctx.fillStyle=grd; ctx.fillRect(0,0,960,640);
+  } else if(wea===2){
+    ctx.fillStyle="rgba(150,165,200,.20)"; ctx.fillRect(0,0,960,640);
+  }
+  // toponymes
+  const wx=cX(chx)+TS/2,wy=cY(chy);
+  lbl(ctx,wx,wy-34,CHANAM,"#ffd843",15);
+  lbl(ctx,wx,wy-19,"(defis, remontees, vestiaire)","rgba(255,240,200,.85)",11);
+  lbl(ctx,cX(reX)+TS/2,cY(reY)-8,"* "+RNAMEB+" *","#9fe8ff",12);
+  for(let v=0;v<NV;v++) lbl(ctx,cX(VX[v])+TS/2,cY(VY[v])-10,VNAMEB[v],"#ffd0a0",12);
+  for(let k=0;k<nLifts;k++)
+    lbl(ctx,cX(LT[k].x1)+TS/2,cY(LT[k].y1)+22,k===0?LNAMEB[0]:"","",11);
+  lbl(ctx,cX(pxx[20])+TS/2,cY(20)-6,PNAMEB,"rgba(255,255,255,.8)",12);
+  // flocons de neige
+  for(let f=0;f<flakes.length;f++){
+    const fk=flakes[f];
+    ctx.fillStyle="rgba(255,255,255,"+(0.35+fk.s*0.18)+")";
+    ctx.beginPath(); ctx.arc(fk.x,fk.y,fk.s,0,6.283); ctx.fill();
+  }
+}
+function LCOL(type,locked){
+  if(locked) return "rgb(120,125,140)";
+  return type===3?"rgb(70,72,84)":(type===2?"rgb(120,70,160)":(type===1?"rgb(40,90,60)":"rgb(42,111,168)"));
+}
+
+/* ============ RENDU CARTE ============ */
+function renderMap(){
+  if(!ctx) return;
+  ctx.fillStyle="#101828"; ctx.fillRect(0,0,960,640);
+  if(!miniCv) { if(miniCv===null&&GW>0) prerenderMiniMap(); if(!miniCv) return; }
+  ctx.drawImage(miniCv,mx0,my0);
+  const X=(x)=>mx0+x*msc, Y=(y)=>my0+y*msc;
+  // remontees
+  for(let k=0;k<nLifts;k++){
+    const locked=npass[curch]<LT[k].unlock;
+    ctx.strokeStyle=locked?"rgba(140,140,150,.9)":(LT[k].type===3?"#40424a":(LT[k].type===2?"#6d3f9e":(LT[k].type===1?"#235a38":"#2a6fa8")));
+    ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(X(LT[k].x1),Y(LT[k].y1)); ctx.lineTo(X(LT[k].x2),Y(LT[k].y2)); ctx.stroke();
+  }
+  // train
+  if(trnOn){
+    const ex=chx,ey=chy+1;
+    ctx.strokeStyle="rgba(90,82,70,.9)"; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(X(stX),Y(stY+2)); ctx.lineTo(X(ex),Y(ey)); ctx.stroke(); ctx.setLineDash([]);
+    for(let c2=0;c2<2;c2++){
+      let tt2=trnT100-c2*6; if(tt2<0) tt2=0;
+      ctx.fillStyle="#c23a2c";
+      ctx.fillRect(X(stX+(ex-stX)*tt2/100)-3,Y(stY+2+(ey-stY-2)*tt2/100)-3,7,5);
+    }
+  }
+  // passes d'or
+  for(let i=0;i<NPMAXI;i++){
+    if(tpass[i]) continue;
+    const px3=X(PASX[i]),py3=Y(PASY[i]);
+    ctx.save(); ctx.translate(px3,py3); ctx.rotate(0.785);
+    if(fr%40<20){ ctx.fillStyle="#ffd843"; ctx.fillRect(-3,-3,6,6); }
+    else { ctx.fillStyle="#a3821a"; ctx.fillRect(-3,-3,6,6); }
+    ctx.restore();
+  }
+  // toponymes
+  lbl(ctx,X(GW/2),16,MONTB+"  \u2014  "+selCountry(),"#ffffff",17);
+  for(let v=0;v<NV;v++) lbl(ctx,X(VX[v]),Y(VY[v])-6,VNAMEB[v],"#ffd0a0",11);
+  lbl(ctx,X(reX),Y(reY)-6,RNAMEB,"#9fe8ff",11);
+  lbl(ctx,X(chx),Y(chy)-6,CHANAM,"#ffd843",11);
+  lbl(ctx,X(LT[0].x2),Y(LT[0].y2)-6,LNAMEB[0],"#d8c9a8",11);
+  // position joueur clignotante
+  if(fr%30<16){
+    ctx.fillStyle="#ff4040";
+    ctx.beginPath(); ctx.arc(X(skx),Y(sky),5,0,6.283); ctx.fill();
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(X(skx),Y(sky),2,0,6.283); ctx.fill();
+  }
+  lbl(ctx,480,626,"M / Entr\u00e9e : retour au ski  \u2022  PASS d'or = hors-piste cach\u00e9s","#96a2bd",13);
+}
+
+/* ============ RENDU TITRE ============ */
+function renderTitle(){
+  if(!ctx) return;
+  const c=ctx;
+  const g=c.createLinearGradient(0,0,0,640);
+  g.addColorStop(0,"#24457c"); g.addColorStop(0.45,"#7fa8d8"); g.addColorStop(0.75,"#cfe0f2"); g.addColorStop(1,"#f2f6ff");
+  c.fillStyle=g; c.fillRect(0,0,960,640);
+  // soleil
+  c.fillStyle="rgba(255,225,120,.95)";
+  c.beginPath(); c.arc(760,120,44,0,6.283); c.fill();
+  c.fillStyle="rgba(255,225,120,.25)";
+  c.beginPath(); c.arc(760,120,64,0,6.283); c.fill();
+  // 3 plans de montagnes
+  const layers=[[330,"#7c95bd",0.9],[430,"#a9bcd8",1.5],[530,"#eaf0fa",2.4]];
+  for(const[base,col,am] of layers){
+    c.fillStyle=col; c.beginPath(); c.moveTo(0,640);
+    for(let x=0;x<=960;x+=24){
+      const y=base
+        -190*Math.exp(-Math.pow((x-170)/(150/am),2))
+        -230*Math.exp(-Math.pow((x-480)/(200/am),2))
+        -160*Math.exp(-Math.pow((x-820)/(140/am),2))
+        -am*9*Math.sin(x*0.013*am)+am*6*Math.sin(x*0.031);
+      c.lineTo(x,y);
+    }
+    c.lineTo(960,640); c.closePath(); c.fill();
+  }
+  // neige au sol
+  c.fillStyle="#f7faff"; c.fillRect(0,556,960,84);
+  c.fillStyle="rgba(200,214,240,.6)"; c.fillRect(0,556,960,5);
+  // sapins silhouette
+  c.fillStyle="#2c5038";
+  for(let x=20;x<960;x+=54){
+    const hh=16+((x*7919)%23);
+    c.beginPath(); c.moveTo(x,600); c.lineTo(x+8,600-hh); c.lineTo(x+16,600); c.closePath(); c.fill();
+  }
+  if(fr%60<40) lbl(c,480,332,"GRAND MONT ADVENTURE","#ffffff",52);
+}
+
+/* ============ BOUCLE + BOOT ============ */
+function loop(t){
+  requestAnimationFrame(loop);
+  if(!lastT) lastT=t;
+  let dt=t-lastT; if(dt>200) dt=200; lastT=t;
+  acc+=dt;
+  let steps=0;
+  while(acc>=FRAME&&steps<4){ acc-=FRAME; steps++; gameStep(); }
+  if(scr===S_SKI||scr===S_MAP){
+    // flocons derives en continu
+    if(wea===2||scr===S_MAP){
+      for(let f=0;f<flakes.length;f++){
+        const fk=flakes[f];
+        fk.y+=fk.v; fk.x+=Math.sin((fr+f)*0.7)*0.6+fk.w*0.04;
+        if(fk.y>640){ fk.y=-4; fk.x=Math.random()*960; }
+        if(fk.x>960) fk.x=0; if(fk.x<0) fk.x=960;
+      }
+    }
+  }
+  if(scr===S_SKI){
+    renderSki(acc/FRAME);
+    updateHud();
+    S_.frame(spd,sOnGroom,sDResto,sDChalet,sDDam,lift>0,sOnRail);
+    sOnRail=false;
+  }
+  else if(scr===S_MAP){ renderMap(); updateHud(); }
+  else if(scr===S_TIT){ renderTitle(); }
+  else if(scr===S_CODE||scr===S_SEL||scr===S_AIDE){ renderTitle(); }
+  else if(scr===S_CPL&&!panel.className){ showCpl(); }
+  if(scr===S_TIT||scr===S_CODE||scr===S_SEL||scr===S_AIDE){
+    if(hudTop) hudTop.style.display="none";
+    if(hudBot) hudBot.style.display="none";
+  }
+}
+function fitCanvas(){
+  if(!stage) return;
+  const s=Math.min(window.innerWidth/960,window.innerHeight/640);
+  stage.style.transform="scale("+s+")";
+}
+
+/* clavier PC (+ ZQSD azerty) */
+const KMAP={"ArrowLeft":0,"ArrowUp":1,"ArrowDown":2,"ArrowRight":3,
+            "KeyA":0,"KeyW":1,"KeyS":2,"KeyD":3,
+            "Space":4,"Enter":4,"Escape":5,"Tab":6,"KeyM":6};
+const SNDK={"Digit1":0,"Digit2":1,"Digit3":2,"Digit4":3,"Numpad1":0,"Numpad2":1,"Numpad3":2,"Numpad4":3};
+function boot(){
+  loadAll(); loadCodes();
+  cv=document.getElementById("cv");
+  ctx=cv.getContext("2d");
+  hudTop=document.getElementById("hudTop");
+  hudBot=document.getElementById("hudBot");
+  hudTL=document.getElementById("hudTL");
+  hudTR=document.getElementById("hudTR");
+  panel=document.getElementById("panel");
+  stage=document.getElementById("stage");
+  window.addEventListener("resize",fitCanvas);
+  window.addEventListener("keydown",function(e){
+    if(e.code==="Tab") e.preventDefault();
+    if(SNDK[e.code]!==undefined){
+      mode=SNDK[e.code]&3;
+      sayhud("Materiel : "+MODES[mode]);
+      saveAll(); e.preventDefault(); return;
+    }
+    if(KMAP[e.code]!==undefined){ keys[KMAP[e.code]]=true; e.preventDefault(); }
+    if(!S_.ok&&e.code==="Enter") S_.init();
+  });
+  window.addEventListener("keyup",function(e){
+    if(KMAP[e.code]!==undefined){ keys[KMAP[e.code]]=false; e.preventDefault(); }
+  });
+  window.addEventListener("beforeunload",saveAll);
+  showTitle();
+  fitCanvas();
+  requestAnimationFrame(loop);
+}
+if(typeof window!=="undefined"&&typeof document!=="undefined"&&document.getElementById){
+  boot();
+}
+/* API de test (node) */
+if(typeof globalThis!=="undefined"&&!globalThis.__GMA_NODE__){
+  globalThis.__GMA_NODE__={
+    G(){ return {scr,curch,curchal,unlocked,npass,tpass,evdone,mode,outfit,spd,skx,sky,hdg,score,
+                 jrec,air,crash,GW,GH,pxx,LT,PASX,PASY,nLifts,nv:NV,hudmsg,npc:NC_,GR,trnOn:trnOn,
+                 bestT,wea,ng,nk,nbg,nearL,nearC,nearR,chx,chy,liftp0:liftp,lift}; },
+    set(fn){ fn(); },
+    tp(x,y,s){ skx=x; sky=y; spd=(s===undefined?0.30:s); px1=skx; py1=sky; },
+    passReset(r){ tpass[r]=0; npass[curch]=0; skx=PASX[r]; sky=PASY[r]; px1=skx; py1=sky; spd=0; },
+    forceSki(){ scr=S_SKI; hidePanel(); },
+    genMount, phys, newMountain, freeRun, boardLift, startEvent, doScreenLogic, gameStep,
+    key(k,v){ keys[k]=v; },
+    call(f,a){ return f.apply(null,a||[]); }
+  };
+}
+</script>
+</body>
+</html>

@@ -1,80 +1,111 @@
 # Grand Mont Adventure
 
-Openworld de ski en 10 stations inspirees de vrais domaines, pour NumWorks
-(app externe .nwa, Epsilon 16+). Fleches pour skier, TOOLBOX pour la carte,
-toutes les figures se combinent en l'air.
+Openworld de ski en 10 stations inspirees de vrais domaines — jouable
+**sur PC (HTML5, la meilleure qualite, avec le son)** et sur **NumWorks**
+(app externe .nwa, Epsilon 16+).
 
 **10 stations** : Val Thorens, Chamonix, Zermatt, Grandvalira, Cortina,
-St Anton, Verbier, Hemsedal, Garmisch, Sierra Nevada.
+St Anton, Verbier, Hemsedal, Garmisch, **Sierra Nevada**.
 
-## Installation
+## Version PC (recommandee)
 
+Un seul fichier : `pc/index.html`. **Double-clic dessus** (aucune
+installation, tout est dans le fichier, son inclu — 100% WebAudio synthetise).
+
+| Touche | Action |
+|---|---|
+| Fleches ou ZQSD | Tourner / accelerer / freiner |
+| Entree ou Espace | Remontee / valider (maintenu en l'air = grab) |
+| Echap | Retour |
+| M (ou tap Tab) | Carte du domaine (pass dores visibles) |
+| Tab (tenu ~1 s) | **Vestiaire** : outfit + materiel |
+| 1, 2, 3, 4 | Changer directement de materiel (Ski/Snowboard x Carving/Freestyle) |
+
+**Son** : vent qui grossit avec la vitesse, glisse sur neige dammee ou
+poudreuse, frictions sur les rails, whoosh des sauts, atterrissages, chocs,
+musique festive autour du refuge et des chalets, ronflement des dameuses,
+bourdonnement des remontees.
+
+**Qualite PC** : cartes deux fois plus grandes par dimension (4x la surface
+des cartes calculette, deja x2 l'aire vs les versions precedentes), terrain
+pre-rendu avec ombrage de relief, forets denses, remontees animees avec
+cabines, meteo (couchers de soleil ranges, chutes de neige), fantome de ton
+record, sauvegarde automatique (localStorage).
+
+## Version calculatrice
+
+### Installation
 1. Branche la calculatrice en USB et va sur my.numworks.com/apps.
 2. Glisse le fichier `app.nwa` (bouton "Installer une application externe").
 3. L'icone **Grand Mont Adventure** apparait dans la liste des apps.
 
-## Commandes
+### Commandes
 
 | Touche | Action |
 |---|---|
 | Haut / Bas / Gauche / Droite | Tourner, accelerer, freiner |
-| OK | Prendre une remontee (pres d'une station) / valider les menus |
+| OK | Prendre une remontee (freine + OK pour embarquer) / valider |
 | BACK | Retour / titre |
 | TOOLBOX (tap) | Carte du domaine |
 | TOOLBOX (tenu ~1 s) | **Vestiaire** : couleur d'outfit + ski/snowboard carving/freestyle |
 
 ### Vestiaire
-Haut/Bas change l'equipement : 0 Ski carving, 1 Ski freestyle,
-2 Snowboard carving, 3 Snowboard freestyle. Gauche/Droite change la couleur
-de l'outfit.
+Ski carving (rapide, switch = CHUTE), ski freestyle (tourne plus, switch OK,
+tricks x1.2), snowboard carving / freestyle. Gauche/Droite : couleur d'outfit.
 
-- **Carving** : vitesse maximum. Switch a l'envers (4 vrilles en l'air en
-  carving) : CHUTE !
-- **Freestyle** : tourne plus fort, tricks plus faciles, switch autorise.
+### Figures
+En l'air : Gauche/Droite = vrille G/D (combinable), Haut = salto avant,
+Bas = salto arriere, OK tenu = grab. Tout enchainer = COMBO x2, x3...
+En carving, 4 vrilles ou plus = switch -> chute !
 
-### Figures (en l'air, apres un kicker ou une falaise)
-- Gauche / Droite : vrille a gauche/droite (combinable plusieurs fois)
-- Haut : salto avant — Bas : salto arriere
-- OK (tenu) : grab
-- Tout combine = COMBO (multiplicateur de points).
-- **Attention** : en carving, 4 vrilles ou plus = switch → chute !
+## Domaine (v3.4)
 
-## Domaine
-Chaque montagne a 5 remontees (teleski, telesiege, telecabine, telepherique),
-2 a 3 villages, un restaurant d'altitude (ses skieurs **dansent**), un snowpark
-(rails + kickers), un boarder cross, et un chalet-refuge en haut de la piste
-principale (tous les defis s'y lancent). 9 **pass dores** sont caches hors-piste
-sur chaque montagne. Les PNJ font la queue aux remontees, skient sur les
-pistes, dansent au restaurant et se baladent dans la station.
-
-**Animations vivantes** : sur les monts pairs, un petit **train de montagne**
-rouge fait la navette entre la gare de vallee et le chalet (rail visible, fumee
-au quai) ; des **dameuses** orange patrouillent la piste principale en la
-dammant, gyrophares clignotants.
-
-Les noms des pistes et remontees changent selon le pays (Piste / Pista /
-Abfahrt / Lope, Telesiege / Sessellift / Seggiovia / Stolheis...).
+- **Cartes doubles** : surface x2 par rapport aux versions precedentes
+  (92x152 pour Val Thorens, jusqu'a 240x176 pour Sierra Nevada).
+- **5 a 8 remontees** par montagne, types logiques selon le denivele :
+  teleski/telesiege pour les petites montees, telecabine pour les grandes,
+  **telepherique** pour les tres grandes & pentues (durees 230/170/130/85).
+- **2-3 villages + restaurant d'altitude + chalet-defis**, avec **noms
+  localises selon le pays** : restaurant/chalets/fetes (Refuge/Berghaus/
+  Xalet/Rifugio Alpino/Hutte/Fjellstue/Berghuette/Refugio), pistes
+  (Piste/Pista/Abfahrt/Loype), remontees (Telesiege/Sessellift/Seggiovia/
+  Stolheis, Gondel, Seilbahn, Taubane, Telesilla...).
+- **9 pass dores** caches hors-piste : le diamant **scintille** dans le jeu ;
+  message style GMA : « Bravo ! Ski pass ! Plus que X pour la montagne
+  suivante » (et « ...et une remontee ! » au seuil suivant). Visibles sur la
+  carte MAP.
+- **Snowparks evolutifs** : plus de montagne = rails, kickers, bosses,
+  rampes, serpentin half-pipe (des la montagne 5), boarder cross.
+- **PNJ avec IA** : file d'attente aux remontees, skieurs sur les pistes,
+  danseurs au restaurant d'altitude, baladeurs qui sifflent au village.
+- **Dameuses IA** (orange, gyros clignotants) qui damment la piste
+  principale ; **train de montagne 2 wagons + gare + fumees** sur les monts
+  pairs. Cliffs/crevasses naturels conserves.
+- **Meteo dynamique** : grand soleil, couchers de soleil oranges, neige
+  (palette grise + flocons).
 
 ## Progression
-- Il faut **12 a 15 pass** pour debloquer la montagne suivante.
-- Pass gagnes : 9 caches hors-piste + recompenses des epreuves (1 a 3 pass
-  la premiere fois).
-- Gagner des pass debloque **au fil de l'eau** de nouvelles remontees
-  (seuils 0/3/6/9/12 pass) et de nouvelles epreuves sur la meme montagne.
-- Code de deblocage a 4 chiffres affiche quand une station est ouverte.
+- **12 a 15 pass** requis pour la montagne suivante.
+- Pass = caches hors-piste + victoires aux epreuves (1 a 3 pass la 1re fois).
+- Nouvelles remontees (seuils 0/3/6/9/12/14/16/19 pass) et nouvelles epreuves
+  debloquees sur la montagne elle-meme au fil de l'eau.
+- Code a 4 chiffres affiche quand tu debloques une station (menu fleches
+  gauche/droite au titre).
 
-### Epreuves (au chalet, touche OK)
-1. **Slalom** — passer toutes les portes de la piste principale.
-2. **Chrono** — sommet → chalet : le **trace colore** s'affiche, ton record
-   et le **fantome** de ton meilleur temps sont affiches.
-3. **Freeride** — marquer 400 points en temps limite.
-4. **Course A-B** — d'un sommet annexe a un village, contre la montre (ghost aussi).
+### Epreuves (au chalet, OK)
+1. **Slalom** — toutes les portes de la piste principale.
+2. **Chrono** — sommet -> chalet : trace colore, record + **fantome**.
+3. **Freeride** — 400 points en temps limite.
+4. **Course A-B** — d'un sommet annexe a la station, contre le fantome.
 5. **Boarder X** — toutes les portes du couloir + kickers.
 
-Garde un oeil sur le HUD : km/h, PASS x/y, TIME/RECORD au centre.
+Garde un oeil sur le HUD : km/h, PASS x/y, TIME/RECORD.
 
 ## Compilation (pour les curieux)
-Le dossier `gma-src/` contient le code C EADK (main.c, icone 55x56, Makefile).
-`make build` produit `output/app.nwa` (nwlink + arm-none-eabi-gcc requis).
+- `gma-src/` : code C EADK (main.c, icone 55x56, Makefile). `make build`
+  produit `output/app.nwa` (nwlink + arm-none-eabi-gcc requis).
+- Tests : hote natif 18 assertions TOUT OK ; version PC testee en Node
+  (19 assertions TOUT OK : generation des 10 stations, physique,
+  remontees, passes, meteo, train).
 
 Bonne glisse !

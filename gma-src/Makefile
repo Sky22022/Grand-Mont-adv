@@ -1,6 +1,7 @@
-CC = arm-none-eabi-gcc
+Q ?= @
+CC = /home/appuser/tools/xpack-arm-none-eabi-gcc-15.2.1-1.1/bin/arm-none-eabi-gcc
 BUILD_DIR = output
-NWLINK = npx --yes -- nwlink@0.0.16
+NWLINK = node /tmp/nwbuild/run.js
 
 define object_for
 $(addprefix $(BUILD_DIR)/,$(addsuffix .o,$(basename $(1))))

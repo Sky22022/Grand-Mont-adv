@@ -21,12 +21,12 @@ const uint32_t eadk_api_level __attribute__((section(".rodata.eadk_api_level")))
 #define BTM 224
 #define CHARW 7
 
-#define MAXGW 112
+#define MAXGW 240
 #define MAXGH 176
 #define NM 10
 #define NGMAX 40
 #define NKMAX 24
-#define NLT 5      // remontees par montagne
+#define NLTMAX 8   // remontees max par montagne (5 -> 8 sur les grandes)
 #define NPMAX 8    // PNJ
 #define NPMAXI 9   // pass caches (items dorures)
 #define GHMAXR 420 // taille max du fantome
@@ -82,22 +82,22 @@ static float r01(void) { return (rng32() & 0xFFFFFF) * (1.0f / 16777216.0f); }
 #define CPAS  COL(255,200,40)
 
 // ---- types de cellules ----
-enum { C_GROOM = 0, C_POW, C_TREE, C_ROCK, C_CLIF, C_KICK, C_BILD, C_PASG, C_RAIL, C_STRT, C_GATE };
+enum { C_GROOM = 0, C_POW, C_TREE, C_ROCK, C_CLIF, C_KICK, C_BILD, C_PASG, C_RAIL, C_STRT, C_GATE, C_BOSS, C_RAMP, C_PIPE };
 
 static const char * MNAMES[NM] = {
   "Val Thorens", "Chamonix", "Zermatt", "Grandvalira", "Cortina",
   "St Anton", "Verbier", "Hemsedal", "Garmisch", "Sierra Nevada"
 };
-typedef struct { const char * nom; const char * piste; const char * lifts[4]; const char * vill; } Country;
+typedef struct { const char * nom; const char * piste; const char * lifts[4]; const char * vill; const char * rest; } Country;
 static Country CO[] = {
-  { "France",   "Piste",   { "Telesiege", "Teleski", "Telecabine", "Telepherique" }, "Village" },
-  { "Suisse",   "Piste",   { "Sessellift", "Schlepplift", "Gondel", "Seilbahn" }, "Weiler" },
-  { "Andorre",  "Pista",   { "Telesilla", "Telesqui", "Telecadira", "Teleferic" }, "Poble" },
-  { "Italie",   "Pista",   { "Seggiovia", "Skilift", "Cabinovia", "Funivia" }, "Rifugio" },
-  { "Autriche", "Abfahrt", { "Sessellift", "Schlepplift", "Gondel", "Seilbahn" }, "Ort" },
-  { "Norvege",  "Lope",    { "Stolheis", "Skiheis", "Gondol", "Taubane" }, "Grend" },
-  { "Allemagne","Abfahrt", { "Sessellift", "Schlepplift", "Gondel", "Seilbahn" }, "Dorf" },
-  { "Espagne",  "Pista",   { "Telesilla", "Teleski", "Telecabina", "Teleferico" }, "Aldea" },
+  { "France",   "Piste",   { "Telesiege", "Teleski", "Telecabine", "Telepherique" }, "Village", "Refuge" },
+  { "Suisse",   "Piste",   { "Sessellift", "Schlepplift", "Gondel", "Seilbahn" }, "Weiler", "Berghaus" },
+  { "Andorre",  "Pista",   { "Telesilla", "Telesqui", "Telecadira", "Teleferic" }, "Poble", "Xalet" },
+  { "Italie",   "Pista",   { "Seggiovia", "Skilift", "Cabinovia", "Funivia" }, "Rifugio", "Rifugio Alpino" },
+  { "Autriche", "Abfahrt", { "Sessellift", "Schlepplift", "Gondel", "Seilbahn" }, "Ort", "Hutte" },
+  { "Norvege",  "Lope",    { "Stolheis", "Skiheis", "Gondol", "Taubane" }, "Grend", "Fjellstue" },
+  { "Allemagne","Abfahrt", { "Sessellift", "Schlepplift", "Gondel", "Seilbahn" }, "Dorf", "Berghuette" },
+  { "Espagne",  "Pista",   { "Telesilla", "Teleski", "Telecabina", "Teleferico" }, "Aldea", "Refugio" },
 };
 static const int CC[NM] = { 0, 0, 1, 2, 3, 4, 1, 5, 6, 7 };
 #define NFEAT 12
@@ -107,28 +107,34 @@ static const char * FEAT[NFEAT] = {
 };
 
 typedef struct { int gw, gh, trees, rocks, cliff; } MSpec;
+/* v3.4 : cartes x2 en surface (~1.41x par dimension) */
 static MSpec MS[NM] = {
-  { 72, 96,  900, 120, 4 },
-  { 80, 112, 1200, 180, 6 },
-  { 88, 128, 1600, 260, 8 },
-  { 88, 144, 2000, 340, 10 },
-  { 96, 152, 2400, 420, 12 },
-  { 96, 160, 2800, 520, 14 },
-  { 104, 160, 3200, 640, 17 },
-  { 104, 168, 3600, 760, 20 },
-  { 112, 176, 4000, 900, 24 },
-  { 112, 176, 4400, 1100, 28 },
+  {  92, 152, 1800,  240,  8 },
+  { 110, 164, 2400,  360, 10 },
+  { 136, 166, 3200,  520, 13 },
+  { 160, 160, 4000,  680, 16 },
+  { 172, 170, 4800,  840, 19 },
+  { 176, 176, 5600, 1040, 22 },
+  { 190, 176, 6400, 1280, 26 },
+  { 200, 176, 7200, 1520, 30 },
+  { 224, 176, 8000, 1800, 34 },
+  { 240, 176, 8800, 2200, 40 },
 };
 
 // ---- grilles montagne ----
-static uint8_t TY_[MAXGW * MAXGH];
+static uint8_t TY_[(MAXGW * MAXGH + 1) / 2];  /* v3.4 : TY compacte 4 bits/cellule */
 static uint8_t HG[MAXGW * MAXGH];
 static int GW, GH;
+static inline uint8_t gt(int x, int y) { int i = y * GW + x; return (uint8_t)((i & 1) ? (TY_[i >> 1] >> 4) : (TY_[i >> 1] & 0x0F)); }
+static inline void stc(int x, int y, uint8_t t) {
+  int i = y * GW + x; uint8_t v = TY_[i >> 1];
+  TY_[i >> 1] = (uint8_t)((i & 1) ? ((v & 0x0F) | (t << 4)) : ((v & 0xF0) | t));
+}
 static int pxx[MAXGH];              // piste principale (colonne par rangee)
 typedef struct { int x1, y1, x2, y2, unlock, type; } Lift;
-static Lift LT[NLT];
+static Lift LT[NLTMAX];
 static int nLifts;
-static const int LUNS[NLT] = { 0, 3, 6, 9, 12 };
+static const int LUNS[NLTMAX] = { 0, 3, 6, 9, 12, 14, 16, 19 };
 static const int ASP[4] = { 230, 170, 130, 85 };  // duree ascension par type
 #define NVM 3
 static int VX[NVM], VY[NVM]; static int NV;
@@ -155,7 +161,8 @@ static int evdone[NM];
 static int npass[NM];
 static int tpass[NPMAXI];
 static int PASX[NPMAXI], PASY[NPMAXI];
-static char PNAMEB[32], LNAMEB[NLT][26], VNAMEB[NVM][22];
+static char PNAMEB[32], LNAMEB[NLTMAX][26], VNAMEB[NVM][22];
+static char RNAMEB[26], CHANAM[26];   /* v3.4 : restaurant d'altitude + chalet nommes */
 
 // ---- skieur ----
 static float skx, sky, hdg, spd;
@@ -222,15 +229,15 @@ static void freeRun(void);
 
 // ================= generation =================
 static void carve(int x, int y, uint8_t t) {
-  if (x >= 0 && x < GW && y >= 0 && y < GH) TY_[y * GW + x] = t;
+  if (x >= 0 && x < GW && y >= 0 && y < GH) stc(x, y, t);
 }
 static void carveSafe(int x, int y, uint8_t t) {
-  if (x >= 0 && x < GW && y >= 0 && y < GH && TY_[y * GW + x] != C_BILD && TY_[y * GW + x] != C_CLIF)
-    TY_[y * GW + x] = t;
+  if (x >= 0 && x < GW && y >= 0 && y < GH && gt(x, y) != C_BILD && gt(x, y) != C_CLIF)
+    stc(x, y, t);
 }
 static uint8_t cellAt(int x, int y) {
   if (x < 0 || x >= GW || y < 0 || y >= GH) return C_TREE;
-  return TY_[y * GW + x];
+  return gt(x, y);
 }
 
 static void pisteWalk(int sx, int sy, int tx, int ty, int wide, int isMain, int * sink) {
@@ -264,6 +271,8 @@ static void genNames(const Country * ct) {
     snprintf(LNAMEB[k], sizeof(LNAMEB[0]), "%s %s", ct->lifts[LT[k].type], FEAT[(base + k) % NFEAT]);
   for (int v = 0; v < NV; v++)
     snprintf(VNAMEB[v], sizeof(VNAMEB[0]), "%s %s", ct->vill, FEAT[(base + 6 + v) % NFEAT]);
+  snprintf(RNAMEB, sizeof(RNAMEB), "%s %s", ct->rest, FEAT[(base + 3) % NFEAT]);  /* v3.4 */
+  snprintf(CHANAM, sizeof(CHANAM), "%s %s", ct->rest, FEAT[(base + 9) % NFEAT]);
 }
 
 static void genMount(int m) {
@@ -287,14 +296,32 @@ static void genMount(int m) {
       HG[y * GW + x] = (uint8_t)h;
     }
   }
-  static uint8_t HG2[MAXGW * MAXGH];
-  for (int y = 1; y < GH - 1; y++) for (int x = 1; x < GW - 1; x++) {
-    int s = 0;
-    for (int j = -1; j <= 1; j++) for (int i2 = -1; i2 <= 1; i2++) s += HG[(y + j) * GW + x + i2];
-    HG2[y * GW + x] = (uint8_t)(s / 9);
+  /* v3.4 : lissage 3x3 sur place (3 lignes brutes au lieu d'un 2e tampon plein) */
+  {
+    static uint8_t rows[3][MAXGW];
+    uint8_t * rp = rows[0], * rc = rows[1], * rn = rows[2];
+    if (GH > 0) memcpy(rc, HG, (size_t)GW);
+    if (GH > 1) memcpy(rn, HG + GW, (size_t)GW);
+    for (int y = 0; y < GH; y++) {
+      for (int x = 0; x < GW; x++) {
+        int s = rc[x], cnt = 1;
+        for (int j = -1; j <= 1; j++) {
+          int yy = y + j;
+          if (yy < 0 || yy >= GH) continue;
+          const uint8_t * row = (j < 0) ? rp : ((j == 0) ? rc : rn);
+          for (int i2 = -1; i2 <= 1; i2++) {
+            int xx = x + i2;
+            if (xx < 0) xx = 0; if (xx >= GW) xx = GW - 1;
+            s += row[xx]; cnt++;
+          }
+        }
+        HG[y * GW + x] = (uint8_t)(s / cnt);
+      }
+      { uint8_t * tmp = rp; rp = rc; rc = rn; rn = tmp; }
+      if (y + 2 < GH) memcpy(rn, HG + (y + 2) * GW, (size_t)GW);
+    }
   }
-  memcpy(HG, HG2, (size_t)GW * GH);
-  for (int y = 0; y < GH; y++) for (int x = 0; x < GW; x++) TY_[y * GW + x] = C_POW;
+  for (int y = 0; y < GH; y++) for (int x = 0; x < GW; x++) stc(x, y, C_POW);
   // falaises / rochers / arbres
   for (int k = 0; k < sp->cliff; k++) {
     int cx = 6 + ri(GW - 12), cy = 8 + ri(GH - 16);
@@ -309,14 +336,25 @@ static void genMount(int m) {
   }
   for (int k = 0; k < sp->rocks; k++) {
     int x = ri(GW), y = ri(GH);
-    if (HG[y * GW + x] > 55) TY_[y * GW + x] = C_ROCK;
+    if (HG[y * GW + x] > 55) stc(x, y, C_ROCK);
   }
-  for (int k = 0; k < sp->trees; k++) {
+  for (int k = 0; k < sp->trees / 4; k++) {
     int x = 1 + ri(GW - 2), y = 1 + ri(GH - 2);
-    if (HG[y * GW + x] < 200) TY_[y * GW + x] = C_TREE;
+    if (HG[y * GW + x] < 200) stc(x, y, C_TREE);
+  }
+  // ---- forets : bosquets denses (look GMA) ----
+  for (int g2 = 0, nf = 10 + m * 2; g2 < nf; g2++) {
+    int gx3 = 3 + ri(GW - 6), gy3 = 3 + ri(GH - 12), rad = 2 + ri(3);
+    for (int dy2 = -rad; dy2 <= rad; dy2++) for (int dx2 = -rad; dx2 <= rad; dx2++)
+      if (dx2 * dx2 + dy2 * dy2 <= rad * rad) {
+        int tx2 = gx3 + dx2, ty2 = gy3 + dy2;
+        if (tx2 > 0 && tx2 < GW - 1 && ty2 > 0 && ty2 < GH - 4
+            && gt(tx2, ty2) == C_POW && HG[ty2 * GW + tx2] < 200)
+          stc(tx2, ty2, C_TREE);
+      }
   }
   // ---- remontees (5) ----
-  nLifts = NLT;
+  nLifts = imini(5 + m / 3, 7 + m / 9);   // 5 remontees au debut, jusqu'a 8 sur les enormes
   for (int k = 0; k < nLifts; k++) LT[k].unlock = LUNS[k];
   LT[0].type = 0; LT[1].type = 1; LT[2].type = 2; LT[3].type = 3;
   LT[4].type = (m % 2) ? 2 : 1;
@@ -367,7 +405,7 @@ static void genMount(int m) {
   nk = 0;
   for (int yy = 12; yy < GH - 10 && nk < NKMAX; yy += 18) {
     int x = pxx[yy] + (ri(7) - 3);
-    if (x > 1 && x < GW - 2 && TY_[yy * GW + x] != C_BILD && TY_[yy * GW + x] != C_CLIF) {
+    if (x > 1 && x < GW - 2 && gt(x, yy) != C_BILD && gt(x, yy) != C_CLIF) {
       kx[nk] = x; ky[nk] = yy; nk++;
     }
   }
@@ -417,12 +455,35 @@ static void genMount(int m) {
       if (r01() < 0.4f) cx += (ri(3) - 1);
     }
   }
+  // ---- bosses (moguls hors-piste) ----
+  for (int k = 0, nbm = 20 + ri(20); k < nbm; k++) {
+    int xb = 2 + ri(GW - 4), yb = 6 + ri(GH - 14);
+    if (gt(xb, yb) == C_POW && iabsi(xb - pxx[yb]) > 3) stc(xb, yb, C_BOSS);
+  }
+  // ---- halfpipe serpentin + rampes (montagnes avancees) ; rampes discretes partout ----
+  if (m >= 4) {
+    int hpx = 4 + ri(GW - 16), hpy = 10 + ri(GH - 26);
+    if (hpx > GW - 5) hpx = GW - 5;
+    if (hpy > GH - 20) hpy = GH - 20;
+    for (int rr = 0; rr < 14; rr++) {
+      int xx = hpx + (int)(3.5f * fsin(rr * 0.45f));
+      if (xx < 4) xx = 4;
+      if (xx > GW - 5) xx = GW - 5;
+      carve(xx, hpy + rr, C_PIPE);
+      carveSafe(xx - 1, hpy + rr, C_RAMP);
+      carveSafe(xx + 1, hpy + rr, C_RAMP);
+    }
+  }
+  for (int k = 0, nr = 20 + m * 2; k < nr; k++) {
+    int xb = 2 + ri(GW - 4), yb = 6 + ri(GH - 14);
+    if (gt(xb, yb) == C_POW && iabsi(xb - pxx[yb]) > 3) stc(xb, yb, C_RAMP);
+  }
   // ---- pass caches hors-piste ----
   int np2 = 0, guard = 0;
   while (np2 < NPMAXI && guard < 4000) {
     guard++;
     int x = 2 + ri(GW - 4), y = 4 + ri(GH - 10);
-    if (TY_[y * GW + x] != C_POW) continue;
+    if (gt(x, y) != C_POW) continue;
     if (iabsi(x - pxx[y]) <= 2) continue;
     int ok2 = 1;
     for (int k = 0; k < nLifts; k++)
@@ -468,6 +529,19 @@ static void genMount(int m) {
       int h1 = HG[y2m * GW + pxx[y2m]], h2 = HG[(y2m + 1) * GW + pxx[y2m + 1]];
       if (h2 > h1) HG[(y2m + 1) * GW + pxx[y2m + 1]] = (uint8_t)h1;
     }
+  }
+  // types logiques selon le denivele : les 5 remontees triees du plus petit au
+  // plus grand denivele -> tire-fesse / telesiege / telesiege / telecabine /
+  // telepherique (immense et pentue)
+  {
+    int rk[NLTMAX];
+    for (int k2 = 0; k2 < nLifts; k2++) rk[k2] = k2;
+    for (int a2 = 1; a2 < nLifts; a2++) for (int b2 = 0; b2 < a2; b2++)
+      if (LT[rk[b2]].y1 - LT[rk[b2]].y2 > LT[rk[a2]].y1 - LT[rk[a2]].y2) {
+        int t2 = rk[a2]; rk[a2] = rk[b2]; rk[b2] = t2;
+      }
+    for (int k2 = 0; k2 < nLifts; k2++)    // rang 0 = tire-fesse ... dernier = telepherique
+      LT[rk[k2]].type = (k2 == 0) ? 0 : (k2 >= nLifts - 1 ? 3 : (k2 >= (nLifts - 1) / 2 + 1 ? 2 : 1));
   }
   // noms (pays)
   genNames(&CO[CC[m]]);
@@ -678,7 +752,7 @@ static void phys(void) {
   float vp = (mode & 1) ? 0.50f : 0.55f;
   float vo = (mode & 1) ? 0.36f : 0.40f;
   float vmax = (ct == C_GROOM || ct == C_GATE || ct == C_STRT || ct == C_PASG) ? vg
-             : (ct == C_POW || ct == C_KICK) ? vp : vo;
+             : (ct == C_POW || ct == C_KICK || ct == C_PIPE || ct == C_RAMP) ? vp : vo;
   if (spd > vmax) spd = vmax;
   if (spd < 0.02f) spd = 0.02f;
   float nx = skx + dx * spd, ny = sky + dy * spd;
@@ -701,6 +775,9 @@ static void phys(void) {
     else { snprintf(hudmsg, sizeof(hudmsg), "KICKER ! compose ta figure"); hudt = 150; }
   }
   if (ncell == C_RAIL && air == 0) { score += 30; sayhud("Rail ! +30"); spd = 0.20f; }
+  if (ncell == C_BOSS && air == 0) { air = 2 + ri(4); spd -= 0.03f; score += 10; }
+  if (ncell == C_PIPE && air == 0) { score += 2; if (spd < 0.55f) spd += 0.012f; }
+  if (ncell == C_RAMP && air == 0) { air = 4 + ri(4); spd += 0.02f; score += 25; }
   skx = nx; sky = ny;
   // ---- figures en l'air ----
   if (air > 0) {
@@ -752,8 +829,19 @@ static void phys(void) {
     if (!tpass[i2] && iabsi((int)skx - PASX[i2]) <= 1 && iabsi((int)sky - PASY[i2]) <= 1) {
       tpass[i2] = 1;
       npass[curch]++;
-      snprintf(hudmsg, sizeof(hudmsg), "PASS cache ! (%d/%d)", npass[curch], needM(curch));
-      hudt = 220;
+      int remM = needM(curch) - npass[curch];
+      int remL = 99;
+      for (int k2 = 0; k2 < nLifts; k2++)
+        if (LT[k2].unlock > npass[curch]) remL = imini(remL, LT[k2].unlock - npass[curch]);
+      char hm[80];
+      if (remM <= 0)
+        snprintf(hm, sizeof(hm), "Bravo ! Ski pass pret : montagne suivante !");
+      else if (remL <= 2 && remL < remM)
+        snprintf(hm, sizeof(hm), "Bravo ! Ski pass ! Plus que %d et une remontee !", remL);
+      else
+        snprintf(hm, sizeof(hm), "Bravo ! Ski pass ! Plus que %d pour la montagne suivante", remM);
+      snprintf(hudmsg, sizeof(hudmsg), "%s", hm);
+      hudt = 240;
       checkUnlock();
     }
   }
@@ -875,12 +963,24 @@ static void drawSlope(int camx, int camy) {
     for (int i2 = 0; i2 < 41; i2++) {
       int gxv = camx + i2;
       if (gxv < 0 || gxv >= GW) { fillR(i2 * 8, sy, 8, 8, weaTint(CSNOW)); continue; }
-      uint8_t t = TY_[gyv * GW + gxv];
+      uint8_t t = gt(gxv, gyv);
       uint8_t h = HG[gyv * GW + gxv];
-      eadk_color_t c = weaTint(CSNOW);
-      if (t == C_GROOM) c = weaTint(CGRM);
-      else if (h > 205) c = weaTint(COL(215,222,238));
-      else if (t == C_POW) c = weaTint(CSNOW);
+      // ombrage du relief : face au soleil / ombre, comme un vrai domaine
+      uint8_t hl = HG[gyv * GW + imaxi(gxv - 1, 0)];
+      uint8_t hu = HG[imaxi(gyv - 1, 0) * GW + gxv];
+      int sh = ((int)h - (int)hl) + ((int)h - (int)hu) / 2;
+      eadk_color_t c;
+      if (sh > 4) c = COL(250,252,255);         // face ensoleillee
+      else if (sh < -3) c = COL(208,219,242);   // ombre de la pente
+      else c = COL(234,240,252);
+      if (h > 205 && sh > 0) c = COL(246,248,255);
+      if (t == C_GROOM) {
+        c = CGRM;
+        uint8_t gl = gt(imaxi(gxv - 1, 0), gyv), gu = gt(gxv, imaxi(gyv - 1, 0));
+        if (gl != C_GROOM || gu != C_GROOM) c = COL(178,196,232);   // bord de piste
+      }
+      if (t != C_GROOM) c = weaTint(c);
+      else if (wea == 1) c = weaTint(c);
       fillR(i2 * 8, sy, 8, 8, c);
       if (t == C_POW && ((gxv + gyv) % 3) == 0) fillR(i2 * 8 + 3, sy + 3, 1, 1, weaTint(CPOWD));
     }
@@ -903,7 +1003,7 @@ static void drawObjects(int camx, int camy) {
     for (int i2 = 0; i2 < 41; i2++) {
       int gxv = camx + i2;
       if (gxv < 0 || gxv >= GW) continue;
-      uint8_t t = TY_[gyv * GW + gxv];
+      uint8_t t = gt(gxv, gyv);
       int px2 = i2 * 8, py2 = sy;
       if (t == C_TREE) {
         fillR(px2 + 3, py2 + 5, 2, 3, COL(70,50,35));
@@ -920,14 +1020,28 @@ static void drawObjects(int camx, int camy) {
         fillR(px2 + 2, py2 + 2, 4, 2, COL(180,110,30));
       } else if (t == C_BILD) {
         fillR(px2, py2 + 2, 8, 6, CBILD);
-        fillR(px2 + 1, py2, 6, 3, COL(190,190,200));
+        fillR(px2 + 1, py2, 6, 3, COL(172,66,52));                   // toit rouge chalet
+        fillR(px2 + 1, py2 + 2, 6, 1, COL(210,90,70));
       } else if (t == C_RAIL) {
         fillR(px2, py2 + 3, 8, 2, COL(90,95,110));
+      } else if (t == C_BOSS) {
+        fillR(px2 + 1, py2 + 2, 6, 5, COL(255,255,255));
+        fillR(px2 + 2, py2 + 3, 4, 2, COL(208,218,240));
+        fillR(px2 + 1, py2 + 7, 6, 1, COL(150,165,200));
+      } else if (t == C_PIPE) {
+        fillR(px2, py2 + 1, 8, 6, COL(120,160,220));
+        fillR(px2 + 1, py2 + 3, 6, 3, COL(225,238,255));
+      } else if (t == C_RAMP) {
+        fillR(px2, py2 + 1, 8, 6, COL(165,175,195));
+        fillR(px2, py2 + 1, 8, 2, COL(223,230,248));
       } else if (t == C_PASG) {
         for (int pi = 0; pi < NPMAXI; pi++) {
           if (!tpass[pi] && PASX[pi] == gxv && PASY[pi] == gyv) {
-            if (fr % 4 < 2) { fillR(px2 + 2, py2 + 2, 4, 4, CPAS); fillR(px2 + 3, py2 + 3, 2, 2, CWH); }
-            else fillR(px2 + 3, py2 + 3, 2, 2, CPAS);
+            fillR(px2 + 2, py2 + 2, 4, 4, CPAS);     // diamant dore vivant
+            fillR(px2 + 3, py2 + 1, 2, 6, CPAS);
+            fillR(px2 + 1, py2 + 3, 6, 2, CPAS);
+            fillR(px2 + 3, py2 + 3, 2, 2, CWH);
+            if (fr % 8 < 4) fillR(px2 + 6, py2, 2, 2, CWH);
           }
         }
       } else if (t == C_STRT) {
@@ -952,10 +1066,14 @@ static void drawObjects(int camx, int camy) {
     int x2 = (LT[k].x2 - camx) * 8 + 4, y2 = (LT[k].y2 - camy) * 8 + 4;
     for (int t = 0; t <= 24; t++) {
       int px3 = x1 + (x2 - x1) * t / 24, py3 = y1 + (y2 - y1) * t / 24;
-      if (px3 > -6 && px3 < W && py3 > TOP - 6 && py3 < H) fillR(px3, py3, 2, 4, lc2);
+      if (px3 > -6 && px3 < W && py3 > TOP - 6 && py3 < H) {
+        if (LT[k].type == 0) { fillR(px3, py3, 1, 5, lc2); }        // tire-fesse : fil fin + piquets
+        else fillR(px3, py3, 2, 4, lc2);
+        if (t % 6 == 3) fillR(px3, py3, 2, 7, COL(96,72,50));       // pylone
+      }
     }
     fillR(x1 - 2, y1 - 3, 7, 5, lc2);
-    fillR(x2 - 2, y2 - 3, 7, 5, lc2);
+    fillR(x2 - 2, y2 - 3, LT[k].type == 3 ? 9 : 7, 5, lc2);
   }
   // drapeau arrivee course
   if (curchal == 3) {
@@ -1040,8 +1158,22 @@ static void drawObjects(int camx, int camy) {
     int x1 = (LT[k2].x1 - camx) * 8 + 4, y1 = (LT[k2].y1 - camy) * 8 + 4;
     int x2 = (LT[k2].x2 - camx) * 8 + 4, y2 = (LT[k2].y2 - camy) * 8 + 4;
     int sx = x1 + (int)((x2 - x1) * liftp), sy = y1 + (int)((y2 - y1) * liftp);
-    fillR(sx - 3, sy - 5, 6, 5, OUTC[outfit]);
-    fillR(sx - 1, sy - 7, 2, 2, COL(250,210,170));
+    if (LT[k2].type == 3) {                 // telepherique : grande cabine suspendue
+      fillR(sx - 4, sy - 8, 9, 7, OUTC[outfit]);
+      fillR(sx - 4, sy - 8, 9, 2, COL(90,95,110));
+      fillR(sx - 4, sy - 11, 9, 4, COL(190,195,210));
+    } else if (LT[k2].type == 2) {          // telecabine : bulle fermée
+      fillR(sx - 4, sy - 5, 7, 5, OUTC[outfit]);
+      fillR(sx - 4, sy - 5, 7, 2, COL(150,155,175));
+      fillR(sx - 1, sy - 8, 2, 4, COL(120,125,140));
+    } else if (LT[k2].type == 1) {          // telesiege : chaise
+      fillR(sx - 2, sy - 5, 5, 4, OUTC[outfit]);
+      fillR(sx - 1, sy - 7, 2, 4, COL(190,195,210));
+      fillR(sx - 1, sy - 8, 2, 2, COL(250,210,170));
+    } else {                                // tire-fesse : juste un tirant
+      fillR(sx - 1, sy - 3, 2, 4, COL(190,195,210));
+      fillR(sx - 4, sy - 2, 4, 1, OUTC[outfit]);
+    }
   }
 }
 
@@ -1062,7 +1194,7 @@ static void drawHud(void) {
   drawStr(t, W - CHARW * (int)strlen(t) - 2, 1, air ? CYE : CWH, CHUD);
   if (hudt > 0) drawStr(hudmsg, imaxi(2, (W - CHARW * (int)strlen(hudmsg)) / 2), BTM + 4, CYE, CHUD);
   else if (nearL) { snprintf(t, sizeof(t), "OK : %s", LNAMEB[nearL - 1]); drawStr(t, 2, BTM + 4, CGRN, CHUD); }
-  else if (nearR) drawStr("Restaurant d'altitude (ambiance !)", 2, BTM + 4, CGRN, CHUD);
+  else if (nearR) { snprintf(t, sizeof(t), "%s (ambiance !)", RNAMEB); drawStr(t, 2, BTM + 4, CGRN, CHUD); }
   else if (nearC) drawStr("OK : chalet (defis/remontees/vestiaire)", 2, BTM + 4, CGRN, CHUD);
   else drawStr("S:vol D:freine T:carte Tlong:vestiaire", 2, BTM + 4, COL(150,160,180), CHUD);
 }
@@ -1071,18 +1203,43 @@ static void drawMapView(void) {
   fillR(0, 0, W, H, CHUD);
   int scale = GH > 128 ? 1 : 2;
   int mx0 = (W - GW * scale) / 2, my0 = (TOP + H - 30 - GH * scale) / 2;
-  for (int y = 0; y < GH; y++) for (int x = 0; x < GW; x++) {
-    uint8_t t = TY_[y * GW + x];
-    eadk_color_t c = CSNOW;
-    if (t == C_GROOM) c = CGRN;
-    else if (t == C_TREE) c = COL(60,110,70);
-    else if (t == C_ROCK || t == C_CLIF) c = COL(90,85,80);
-    else if (t == C_BILD) c = CRED;
-    else if (t == C_KICK) c = CKICK;
-    else if (t == C_RAIL) c = COL(90,95,110);
-    else if (HG[y * GW + x] > 205) c = COL(200,210,225);
-    c = weaTint(c);
-    fillR(mx0 + x * scale, my0 + y * scale, scale, scale, c);
+  /* v3.4 : fusion des runs horizontaux (cartes doubles => 1 seul fillR par run) */
+  for (int y = 0; y < GH; y++) {
+    int x = 0;
+    while (x < GW) {
+      uint8_t t = gt(x, y);
+      eadk_color_t c = CSNOW;
+      if (t == C_GROOM) c = CGRN;
+      else if (t == C_TREE) c = COL(60,110,70);
+      else if (t == C_ROCK || t == C_CLIF) c = COL(90,85,80);
+      else if (t == C_BILD) c = CRED;
+      else if (t == C_KICK) c = CKICK;
+      else if (t == C_RAIL) c = COL(90,95,110);
+      else if (t == C_BOSS) c = COL(190,205,230);
+      else if (t == C_PIPE) c = COL(120,160,220);
+      else if (t == C_RAMP) c = COL(165,175,195);
+      else if (HG[y * GW + x] > 205) c = COL(200,210,225);
+      c = weaTint(c);
+      int run = 1;
+      while (x + run < GW) {
+        uint8_t t2 = gt(x + run, y);
+        eadk_color_t c2 = CSNOW;
+        if (t2 == C_GROOM) c2 = CGRN;
+        else if (t2 == C_TREE) c2 = COL(60,110,70);
+        else if (t2 == C_ROCK || t2 == C_CLIF) c2 = COL(90,85,80);
+        else if (t2 == C_BILD) c2 = CRED;
+        else if (t2 == C_KICK) c2 = CKICK;
+        else if (t2 == C_RAIL) c2 = COL(90,95,110);
+        else if (t2 == C_BOSS) c2 = COL(190,205,230);
+        else if (t2 == C_PIPE) c2 = COL(120,160,220);
+        else if (t2 == C_RAMP) c2 = COL(165,175,195);
+        else if (HG[y * GW + x + run] > 205) c2 = COL(200,210,225);
+        if (weaTint(c2) != c) break;
+        run++;
+      }
+      fillR(mx0 + x * scale, my0 + y * scale, run * scale, scale, c);
+      x += run;
+    }
   }
   for (int k = 0; k < nLifts; k++) {
     eadk_color_t lc2 = LT[k].type == 2 ? COL(120,70,160) : (LT[k].type == 1 ? COL(40,90,60) : CBLU);
@@ -1214,7 +1371,7 @@ static const char * CHROWS[8] = { "Slalom", "Chrono", "Freeride", "Course A-B", 
 static void drawCha(void) {
   fillR(30, 40, 260, 160, CHUD);
   char t[44];
-  snprintf(t, sizeof(t), "%s - %s", VNAMEB[0], selCountry());
+  snprintf(t, sizeof(t), "%s - %s", CHANAM, selCountry());  /* v3.4 : chalet nomme */
   drawStr(t, 40, 46, CYE, CHUD);
   snprintf(t, sizeof(t), "PASS %d/%d", npass[curch], needM(curch));
   drawStr(t, 40, 60, CPAS, CHUD);
@@ -1373,7 +1530,7 @@ int main(int argc, char ** argv) {
         if (scr == S_SKI) {
           if (hudt > 0) hudt--;
           if (nearC && okpr) { selv = 0; cham = 0; scr = S_CHA; }
-          else if (nearL && okpr && lift == 0 && spd < 0.20f) { boardLift(nearL - 1); }
+          else if (nearL && okpr && lift == 0 && (spd < 0.20f || kd(eadk_key_down))) { boardLift(nearL - 1); }
           else if (nearL && okpr) { sayhud("Ralentis pour embarquer !"); }
           if (kd(eadk_key_toolbox)) {
             vestT++;
