@@ -656,6 +656,7 @@ const S_={
 // ---------- physique ----------
 const trail=[];
 let px1=0,py1=0,pliftp=0;
+let skL=false,skR=false,skDir=0,skT=-99;   // pas patineur
 let sOnGroom=false,sOnRail=false,sDResto=-1,sDChalet=-1,sDDam=-1;
 
 function freeRun(){
@@ -665,6 +666,7 @@ function freeRun(){
   for(let i2=0;i2<ng;i2++) gdone[i2]=0;
   for(let i2=0;i2<nbg;i2++) bdone[i2]=0;
   score=0; combo=1; chachr=0; lift=0; liftp=0; ghRec=0;
+  skL=skR=false; skDir=0; skT=-99;
   trail.length=0;
   px1=skx; py1=sky; pliftp=liftp;
 }
@@ -712,6 +714,18 @@ function phys(){
     if(kd(3)) hdg+=turn+(spd>0.35?0.02:0);
     if(hdg<-1.2) hdg=-1.2;
     if(hdg>1.2) hdg=1.2;
+    // pas patineur : alterner GAUCHE-DROITE rapidement poussit sur le plat
+    const L2=kd(0),R2=kd(3);
+    if((L2&&!skL)||(R2&&!skR)){
+      const dir=L2?-1:1;
+      if(skDir!==0&&dir!==skDir&&fr-skT<26&&spd>=0.015){
+        const cap=(mode&2)?0.60:0.68;
+        if(spd<cap) spd=Math.min(cap,spd+0.05*((mode&1)?1.15:1));
+        S_.burst(0.10,700,"lowpass",0.10);   // pousser la neige
+      }
+      skDir=dir; skT=fr;
+    }
+    skL=L2; skR=R2;
   }
   const dx=Math.sin(hdg),dy=Math.cos(hdg);
   let cxi=Math.trunc(skx+dx*1.2),cyi=Math.trunc(sky+dy*1.2);
@@ -1262,6 +1276,7 @@ function refreshAide(){
   if(scr!==S_AIDE) return;
   const PAGES=[
     ["Skier","<div class='row'><span class='keycap'>&#8592;&#8594;</span> tourner. La pente donne la vitesse, <span class='keycap'>&#8595;</span> freine.</div>"+
+      "<div class='row'><b>Pas patineur</b> : sur le plat, alterne <span class='keycap'>&#8592;</span> <span class='keycap'>&#8594;</span> rapidement pour pousser, comme en patin &agrave; glace !</div>"+
       "<div class='row'>En saut : <span class='keycap'>&#8592;&#8594;</span> vrille, <span class='keycap'>&#8593;</span> salto avant, <span class='keycap'>&#8595;</span> salto arri&#232;re, <span class='keycap'>Entr&#233;e</span> tenu = grab.</div>"+
       "<div class='row'>Combo = les encha&#238;ner avant de retoucher la neige (x2, x3&#8230;)</div>"+
       "<div class='row'>Carving : rapide, mais &#224; l'envers = CHUTE. Freestyle : switch autoris&#233;, tourne plus, tricks x1.2.</div>"+

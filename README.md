@@ -15,6 +15,7 @@ installation, tout est dans le fichier, son inclu — 100% WebAudio synthetise).
 | Touche | Action |
 |---|---|
 | Fleches ou ZQSD | Tourner / accelerer / freiner |
+| **Alterner gauche-droite** | **Pas patineur** : pousser sur le plat (comme en patin a glace) |
 | Entree ou Espace | Remontee / valider (maintenu en l'air = grab) |
 | Echap | Retour |
 | M (ou tap Tab) | Carte du domaine (pass dores visibles) |
@@ -44,6 +45,7 @@ record, sauvegarde automatique (localStorage).
 | Touche | Action |
 |---|---|
 | Haut / Bas / Gauche / Droite | Tourner, accelerer, freiner |
+| (alterner Gauche/Droite) | **Pas patineur** : pousser sur le plat |
 | OK | Prendre une remontee (freine + OK pour embarquer) / valider |
 | BACK | Retour / titre |
 | TOOLBOX (tap) | Carte du domaine |

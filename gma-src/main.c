@@ -204,6 +204,8 @@ static bool prevK[20];
 static int coded[4] = {0,0,0,0}; static int ccur = 0;
 
 static bool kd(eadk_key_t k) { return eadk_keyboard_key_down(ks, k); }
+static bool skL = false, skR = false;   /* pas patineur */
+static int skDir = 0, skT = -99;
 static bool pr(eadk_key_t k) { bool v = kd(k); bool p = prevK[k & 19]; prevK[k & 19] = v; return v && !p; }
 
 static void fillR(int x, int y, int w, int h, eadk_color_t c) {
@@ -520,7 +522,7 @@ static void genMount(int m) {
     if (hBot > hTop - 30) hBot = hTop - 30;
     for (int y2m = yTop; y2m < yBot; y2m++) {
       int tgt = hTop - (hTop - hBot) * (y2m - yTop) / (yBot - yTop);
-      for (int ddx = -1; ddx <= 1; ddx++) {
+      for (int ddx = -4; ddx <= 4; ddx++) {
         int xx2 = pxx[y2m] + ddx; if (xx2 < 1) xx2 = 1; if (xx2 >= GW - 1) xx2 = GW - 1;
         if (HG[y2m * GW + xx2] > (uint8_t)tgt) HG[y2m * GW + xx2] = (uint8_t)tgt;
       }
@@ -732,6 +734,19 @@ static void phys(void) {
     if (kd(eadk_key_right)) hdg += turn + (spd > 0.35f ? 0.02f : 0);
     if (hdg < -1.2f) hdg = -1.2f;
     if (hdg > 1.2f) hdg = 1.2f;
+    /* v3.5 : pas patineur — alterner G/D rapidement pousse sur le plat */
+    {
+      bool L = kd(eadk_key_left), R = kd(eadk_key_right);
+      if ((L && !skL) || (R && !skR)) {
+        int dir = L ? -1 : 1;
+        if (skDir != 0 && dir != skDir && fr - skT < 26 && spd >= 0.015f) {
+          float cap = 0.68f;
+          if (spd < cap) { float ns = spd + 0.05f * ((mode & 1) ? 1.15f : 1.0f); spd = ns > cap ? cap : ns; }
+        }
+        skDir = dir; skT = fr;
+      }
+      skL = L; skR = R;
+    }
   }
   float dx = fsin(hdg), dy = fcos(hdg);
   int cxi = (int)(skx + dx * 1.2f), cyi = (int)(sky + dy * 1.2f);
@@ -1331,13 +1346,13 @@ static void drawSel(void) {
 
 static const char * AP[3][10] = {
   { "GRAND MONT ADVENTURE", "",
-    "Fleches : skier. La pente donne",
-    "la vitesse, BAS freine.",
-    "En saut : G/D = vrille, HAUT =",
-    "salto avant, BAS = salto ar,",
-    "OK tenu = grab. Combos = points",
-    "Carving rapide mais switch =",
-    "CHUTE ! Freestyle : ok", "" },
+    "Fleches : skier. Pente = vitesse,",
+    "BAS freine. Sur le plat, alterne",
+    "G/D : pas patineur !",
+    "En saut : vrilles + salto + grab",
+    "= COMBO de points. Carving rapide",
+    "mais switch = CHUTE ! Freestyle",
+    "tourne +, switch ok, tricks x1.2", "" },
   { "Chalet (OK pres du chalet) :", "",
     "5 defis : Slalom, Chrono,",
     "Freeride chronometre, Course",
